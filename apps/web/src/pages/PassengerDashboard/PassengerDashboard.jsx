@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Bus,
   Route,
@@ -7,7 +7,6 @@ import {
   Search,
   Navigation,
   Star,
-  History,
   Bell,
   MapPin,
   Map,
@@ -18,28 +17,23 @@ import {
   TrendingDown,
   ArrowLeftRight,
   Circle,
-  Target,
   Eye,
   Calendar,
+  Loader2,
+  AlertCircle,
+  Navigation2,
 } from "lucide-react";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
 import Card from "../../components/ui/Card";
-
-const statCards = [
-  { icon: Bus, label: "Nearby Vehicles", value: "12", trend: "+2", trendUp: true, gradient: "from-blue-500 to-blue-600", bgLight: "bg-blue-50", pulseColor: "bg-blue-500" },
-  { icon: Route, label: "Active Routes", value: "8", trend: "+1", trendUp: true, gradient: "from-emerald-500 to-emerald-600", bgLight: "bg-emerald-50", pulseColor: "bg-emerald-500" },
-  { icon: Clock, label: "Average ETA", value: "4 min", trend: "-30s", trendUp: true, gradient: "from-violet-500 to-violet-600", bgLight: "bg-violet-50", pulseColor: "bg-violet-500" },
-  { icon: Bookmark, label: "Saved Routes", value: "6", trend: "0", trendUp: true, gradient: "from-amber-500 to-amber-600", bgLight: "bg-amber-50", pulseColor: "bg-amber-500" },
-];
-
-const nearbyVehicles = [
-  { id: "TN-01-AB-1234", route: "Route 42 - Central Market → Bus Stand", occupancy: 68, eta: "2 min", status: "On Time" },
-  { id: "TN-01-CD-5678", route: "Route 15 - Railway Stn → College", occupancy: 85, eta: "5 min", status: "On Time" },
-  { id: "TN-01-EF-9012", route: "Route 7 - Hospital → Bus Stand", occupancy: 45, eta: "8 min", status: "Delayed" },
-  { id: "TN-01-GH-3456", route: "Route 21 - Market → Industrial Area", occupancy: 92, eta: "3 min", status: "On Time" },
-  { id: "TN-01-IJ-7890", route: "Route 33 - Bus Stand → Park", occupancy: 30, eta: "12 min", status: "On Time" },
-];
+import EmptyState from "../../components/ui/EmptyState";
+import useGeolocation from "../../hooks/useGeolocation";
+import useNearbyBusStops from "../../hooks/useNearbyBusStops";
+import useNearbyRoutes from "../../hooks/useNearbyRoutes";
+import useLiveVehicles from "../../hooks/useLiveVehicles";
+import busStops from "../../data/transport/busStops";
+import { calculateDistance } from "../../utils/location/distance";
+import MapView from "../../components/maps/MapView";
 
 const favouriteRoutes = [
   { name: "Home → Office", from: "Gandhi Nagar", to: "Tech Park", frequency: "Daily" },
@@ -76,7 +70,7 @@ const sectionHeader = (title, action) => (
   </div>
 );
 
-function StatCard({ icon: Icon, label, value, trend, trendUp, gradient, bgLight }) {
+function StatCard({ icon: Icon, label, value, trend, trendUp, gradient }) {
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg sm:p-6">
       <div className={`absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-br ${gradient}`} />
@@ -143,14 +137,436 @@ function NotifIcon({ type }) {
   );
 }
 
+function LocationPreview() {
+  const { latitude, longitude, accuracy, address, city, loading, error } = useGeolocation();
+
+  if (loading && !latitude) {
+    return (
+      <Card className="mb-8 border-gray-100 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50">
+            <Loader2 size={24} className="animate-spin text-blue-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Getting your location...</p>
+            <p className="mt-0.5 text-xs text-gray-500">Please allow location access</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (error && !latitude) {
+    return (
+      <Card className="mb-8 border border-red-100 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50">
+            <AlertCircle size={24} className="text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Location unavailable</p>
+            <p className="mt-0.5 text-xs text-red-500">{error}</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mb-8 overflow-hidden border-gray-100 shadow-sm">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-sm">
+          <MapPin size={26} />
+        </div>
+
+        <div className="flex-1 space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Current Location
+            </p>
+            <p className="mt-0.5 text-base font-semibold text-gray-900">
+              {address || "Resolving address..."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">City</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">{city || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Accuracy</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {accuracy != null ? `${Math.round(accuracy)}m` : "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Latitude</p>
+              <p className="mt-0.5 text-sm font-mono text-gray-600">
+                {latitude?.toFixed(6) ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Longitude</p>
+              <p className="mt-0.5 text-sm font-mono text-gray-600">
+                {longitude?.toFixed(6) ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs text-amber-700">{error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function NearbyBusStops({ stops, loading, error }) {
+  if (loading) {
+    return (
+      <div className="mb-8">
+        {sectionHeader("Nearby Bus Stops")}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 shrink-0 rounded-xl bg-gray-100" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-gray-100" />
+                  <div className="h-3 w-1/2 rounded bg-gray-50" />
+                </div>
+              </div>
+              <div className="mt-4 flex gap-4 border-t border-gray-50 pt-4">
+                <div className="h-3 w-16 rounded bg-gray-50" />
+                <div className="h-3 w-20 rounded bg-gray-50" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error && stops.length === 0) {
+    return (
+      <div className="mb-8">
+        {sectionHeader("Nearby Bus Stops")}
+        <EmptyState
+          icon={AlertCircle}
+          title="Unable to fetch nearby stops"
+          description="Showing available transport network."
+        />
+      </div>
+    );
+  }
+
+  if (!error && stops.length === 0) {
+    return (
+      <div className="mb-8">
+        {sectionHeader("Nearby Bus Stops")}
+        <EmptyState
+          icon={MapPin}
+          title="No stops nearby"
+          description="No bus stops found within 1.5 km of your location."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-8">
+      {sectionHeader("Nearby Bus Stops", (
+        <span className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">
+          <MapPin size={12} />
+          {stops.length} stop{stops.length !== 1 ? "s" : ""}
+        </span>
+      ))}
+
+      {error && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          <AlertCircle size={16} className="shrink-0 text-amber-500" />
+          <span>Unable to fetch nearby stops. Showing available transport network.</span>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {stops.slice(0, 9).map((stop) => {
+          const walkingTimeMin = Math.ceil(stop.distance / 83.33);
+          const hours = Math.floor(walkingTimeMin / 60);
+          const minutes = walkingTimeMin % 60;
+          const walkingTime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
+
+          return (
+            <div key={stop.id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+                    <MapPin size={20} className="text-emerald-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-900">{stop.name}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{stop.type}</p>
+                    {stop.routes && stop.routes.length > 0 && (
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        Routes: {stop.routes.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-4 border-t border-gray-50 pt-4">
+                <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                  <Navigation size={14} className="text-gray-400" />
+                  <span className="font-semibold text-gray-800">{stop.distance}m</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                  <Clock size={14} className="text-gray-400" />
+                  <span>{walkingTime} walk</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AvailableBusRoutes({ routes, loading, error }) {
+  if (loading) {
+    return (
+      <div className="mb-8">
+        {sectionHeader("Available Routes Near You")}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 shrink-0 rounded-xl bg-gray-100" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-20 rounded bg-gray-100" />
+                  <div className="h-3 w-3/4 rounded bg-gray-50" />
+                  <div className="h-3 w-1/2 rounded bg-gray-50" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mb-8">
+        {sectionHeader("Available Routes Near You")}
+        <EmptyState
+          icon={AlertCircle}
+          title="Unable to load routes"
+          description={error}
+        />
+      </div>
+    );
+  }
+
+  if (routes.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      {sectionHeader("Available Routes Near You", (
+        <span className="inline-flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-600">
+          <Route size={12} />
+          {routes.length} route{routes.length !== 1 ? "s" : ""}
+        </span>
+      ))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {routes.slice(0, 9).map((route) => (
+          <div key={`${route.routeId}-${route.stopId}`} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50">
+                  <Route size={20} className="text-violet-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-md bg-gradient-to-r from-violet-500 to-violet-600 px-2 py-0.5 text-xs font-bold text-white">
+                      {route.routeNumber}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm font-bold text-gray-900">{route.routeName}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {route.source} <span className="text-gray-300">→</span> {route.destination}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-4 border-t border-gray-50 pt-4">
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <MapPin size={14} className="text-gray-400" />
+                <span className="font-semibold text-gray-800">{route.matchingStop}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <Navigation size={14} className="text-gray-400" />
+                <span>{route.distance}m</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NearbyTransportMap({ vehicles = [], latitude, longitude, nearbyStops }) {
+  const nearestStop = nearbyStops.length > 0
+    ? nearbyStops.reduce((a, b) => (a.distance < b.distance ? a : b))
+    : null;
+
+  const totalBusStops = busStops.length;
+
+  return (
+    <div className="mb-8">
+      {sectionHeader("Transport Network")}
+      <Card className="overflow-hidden border-gray-100 p-0 shadow-sm">
+        <div className="h-[400px] w-full sm:h-[500px]">
+          <MapView
+            latitude={latitude}
+            longitude={longitude}
+            vehicles={vehicles}
+            zoom={15}
+          />
+        </div>
+        <div className="border-t border-gray-100 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+            <span className="font-medium text-gray-700">
+              Active Buses: <span className="font-bold text-gray-900">{vehicles.length}</span>
+            </span>
+            <span className="font-medium text-gray-700">
+              Network Stops: <span className="font-bold text-gray-900">{totalBusStops}</span>
+            </span>
+            {nearestStop && (
+              <>
+                <span className="font-medium text-gray-700">
+                  Nearest Stop: <span className="font-bold text-gray-900">{nearestStop.name}</span>
+                </span>
+                <span className="font-medium text-gray-700">
+                  Distance: <span className="font-bold text-gray-900">{nearestStop.distance}m</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LiveEtaCard({ nearestVehicle }) {
+  return (
+    <div className="h-full rounded-2xl border border-gray-100 bg-gradient-to-br from-blue-600 via-blue-600 to-blue-800 p-6 shadow-sm sm:p-8">
+      {nearestVehicle ? (
+        <div className="flex flex-col items-center text-center">
+          <div className="relative mb-5">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+              <div className="relative">
+                <Navigation className="text-white" size={32} />
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/60" />
+                  <span className="relative inline-flex h-4 w-4 rounded-full bg-white" />
+                </span>
+              </div>
+            </div>
+          </div>
+          <p className="text-5xl font-bold tracking-tight text-white">
+            {Math.max(1, Math.round(nearestVehicle._dist / (nearestVehicle.speed * 1000 / 60)))} min
+          </p>
+          <p className="mt-1.5 text-sm font-medium text-blue-100">Next bus arrival</p>
+          <div className="mt-2 flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-sm">
+            <span className={`h-2 w-2 rounded-full ${nearestVehicle.status === "On Time" ? "bg-emerald-400" : "bg-red-400"}`} />
+            <p className="text-xs font-medium text-blue-100">{nearestVehicle.routeName} · {nearestVehicle.vehicleNumber}</p>
+          </div>
+          <div className="mt-6 w-full space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-blue-200">{nearestVehicle.nextStop}</span>
+              <span className="text-blue-200">{nearestVehicle.speed} km/h</span>
+            </div>
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/20">
+              <div className="h-full w-2/3 rounded-full bg-white transition-all duration-1000" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-blue-200">{Math.round(nearestVehicle.occupancy / nearestVehicle.capacity * 100)}% occupancy</span>
+              <span className="text-blue-200">{Math.round(nearestVehicle._dist)}m away</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <p className="text-2xl font-bold tracking-tight text-white">—</p>
+          <p className="mt-2 text-sm font-medium text-blue-100">No vehicles nearby</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PassengerDashboard() {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
+  const { vehicles, loading: vehiclesLoading } = useLiveVehicles();
+  const { latitude, longitude, loading: geoLoading, error: geoError } = useGeolocation();
+  const { busStops: nearbyStops, loading: stopsLoading, error: stopsError } = useNearbyBusStops(latitude, longitude);
+  const { routes: nearbyRoutes, loading: routesLoading, error: routesError } = useNearbyRoutes(latitude, longitude, nearbyStops);
+
+  const nearestStop = useMemo(() => {
+    if (nearbyStops.length === 0) return null;
+    return nearbyStops.reduce((a, b) => (a.distance < b.distance ? a : b));
+  }, [nearbyStops]);
 
   const swapLocations = () => {
     setSource(destination);
     setDestination(source);
   };
+
+  const activeRoutesCount = useMemo(() => {
+    const unique = new Set(vehicles.map((v) => v.routeId));
+    return unique.size;
+  }, [vehicles]);
+
+  const nearbyVehiclesLive = useMemo(() => {
+    if (!vehicles.length) return [];
+    if (latitude == null || longitude == null) return vehicles.slice(0, 9);
+
+    const withDist = vehicles.map((v) => ({
+      ...v,
+      _dist: calculateDistance(latitude, longitude, v.latitude, v.longitude),
+    }));
+
+    const nearby = withDist
+      .filter((v) => v._dist <= 3000)
+      .sort((a, b) => a._dist - b._dist)
+      .slice(0, 9);
+
+    if (nearby.length === 0) return vehicles.slice(0, 6);
+    return nearby;
+  }, [vehicles, latitude, longitude]);
+
+  const nearestVehicle = useMemo(() => {
+    if (!nearbyVehiclesLive.length) return null;
+    return nearbyVehiclesLive.reduce((a, b) => (a._dist < b._dist ? a : b));
+  }, [nearbyVehiclesLive]);
+
+  const statCardsLive = useMemo(() => [
+    { icon: Bus, label: "Nearby Vehicles", value: String(vehicles.length), trend: "Live", trendUp: true, gradient: "from-blue-500 to-blue-600" },
+    { icon: Route, label: "Active Routes", value: String(activeRoutesCount), trend: "Live", trendUp: true, gradient: "from-emerald-500 to-emerald-600" },
+    { icon: Clock, label: "Average ETA", value: nearestVehicle ? `${Math.max(1, Math.round(nearestVehicle._dist / (nearestVehicle.speed * 1000 / 60)))} min` : "—", trend: "Live", trendUp: true, gradient: "from-violet-500 to-violet-600" },
+    { icon: Bookmark, label: "Saved Routes", value: "6", trend: "0", trendUp: true, gradient: "from-amber-500 to-amber-600" },
+  ], [vehicles.length, activeRoutesCount, nearestVehicle]);
 
   return (
     <DashboardLayout title="Passenger Dashboard" role="passenger">
@@ -164,12 +580,14 @@ function PassengerDashboard() {
       />
 
       <div className="mb-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat, i) => (
+        {statCardsLive.map((stat, i) => (
           <div key={stat.label} className={`animate-fade-in-up delay-${(i + 1) * 100}`}>
             <StatCard {...stat} />
           </div>
         ))}
       </div>
+
+      <LocationPreview />
 
       <Card className="mb-8 border-gray-100 shadow-sm">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -216,86 +634,118 @@ function PassengerDashboard() {
       <div className="mb-8 grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           {sectionHeader("Nearby Vehicles", (
-            <button className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
-              View All
-              <ChevronRight size={16} />
-            </button>
+            <span className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">
+              <Bus size={12} />
+              {nearbyVehiclesLive.length} near you
+            </span>
           ))}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {nearbyVehicles.map((vehicle) => (
-              <div key={vehicle.id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-gray-200 hover:shadow-lg sm:p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${vehicle.status === "On Time" ? "bg-emerald-50" : "bg-red-50"}`}>
-                      <Bus size={20} className={vehicle.status === "On Time" ? "text-emerald-600" : "text-red-600"} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-gray-900">{vehicle.id}</p>
-                      <p className="mt-0.5 truncate text-xs text-gray-500">{vehicle.route}</p>
+          {vehiclesLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 shrink-0 rounded-xl bg-gray-100" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-2/3 rounded bg-gray-100" />
+                      <div className="h-3 w-1/2 rounded bg-gray-50" />
                     </div>
                   </div>
-                  <StatusBadge status={vehicle.status} />
-                </div>
-                <OccupancyBar value={vehicle.occupancy} />
-                <div className="mt-4 flex items-center justify-between border-t border-gray-50 pt-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                      <Clock size={14} className="text-gray-400" />
-                      <span className="font-semibold text-gray-800">{vehicle.eta}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                      <Users size={14} className="text-gray-400" />
-                      <span>{vehicle.occupancy}%</span>
+                  <div className="mt-4 space-y-2">
+                    <div className="h-2 w-full rounded bg-gray-50" />
+                    <div className="flex justify-between">
+                      <div className="h-3 w-16 rounded bg-gray-50" />
+                      <div className="h-3 w-12 rounded bg-gray-50" />
                     </div>
                   </div>
-                  <button className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-all duration-200 hover:bg-blue-100">
-                    <Eye size={14} />
-                    Track
-                  </button>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : nearbyVehiclesLive.length === 0 ? (
+            <EmptyState
+              icon={Bus}
+              title="No vehicles nearby"
+              description="No active vehicles found near your location."
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {nearbyVehiclesLive.map((vehicle) => {
+                const etaMin = Math.max(1, Math.round(vehicle._dist / (vehicle.speed * 1000 / 60)));
+                return (
+                  <div key={vehicle.id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-gray-200 hover:shadow-lg sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${vehicle.status === "On Time" ? "bg-emerald-50" : "bg-red-50"}`}>
+                          <Bus size={20} className={vehicle.status === "On Time" ? "text-emerald-600" : "text-red-600"} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{vehicle.vehicleNumber}</p>
+                          <p className="mt-0.5 truncate text-xs text-gray-500">{vehicle.routeName}</p>
+                        </div>
+                      </div>
+                      <StatusBadge status={vehicle.status} />
+                    </div>
+                    <OccupancyBar value={Math.round(vehicle.occupancy / vehicle.capacity * 100)} />
+                    <div className="mt-4 flex items-center justify-between border-t border-gray-50 pt-4">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                          <Clock size={14} className="text-gray-400" />
+                          <span className="font-semibold text-gray-800">{etaMin} min</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                          <Users size={14} className="text-gray-400" />
+                          <span>{Math.round(vehicle.occupancy / vehicle.capacity * 100)}%</span>
+                        </div>
+                      </div>
+                      <button className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-all duration-200 hover:bg-blue-100">
+                        <Eye size={14} />
+                        Track
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div>
           {sectionHeader("Live ETA")}
-          <div className="h-full rounded-2xl border border-gray-100 bg-gradient-to-br from-blue-600 via-blue-600 to-blue-800 p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col items-center text-center">
-              <div className="relative mb-5">
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
-                  <div className="relative">
-                    <Navigation className="text-white" size={32} />
-                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/60" />
-                      <span className="relative inline-flex h-4 w-4 rounded-full bg-white" />
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <p className="text-5xl font-bold tracking-tight text-white">4 min</p>
-              <p className="mt-1.5 text-sm font-medium text-blue-100">Next bus arrival</p>
-              <div className="mt-2 flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-sm">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                <p className="text-xs font-medium text-blue-100">Route 42 · TN-01-AB-1234</p>
-              </div>
-              <div className="mt-6 w-full space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-blue-200">Current: Central Market</span>
-                  <span className="text-blue-200">Next: Gandhi Nagar</span>
-                </div>
-                <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/20">
-                  <div className="h-full w-2/3 rounded-full bg-white transition-all duration-1000" />
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-blue-200">2 stops away</span>
-                  <span className="text-blue-200">1.2 km</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <LiveEtaCard nearestVehicle={nearestVehicle} />
         </div>
       </div>
+
+      {import.meta.env.DEV && (
+        <div className="mb-8 rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4">
+          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-800">Debug Info</h3>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono text-amber-900">
+            <div>Passenger Latitude: <span className="font-semibold">{latitude?.toFixed(6) ?? '—'}</span></div>
+            <div>Passenger Longitude: <span className="font-semibold">{longitude?.toFixed(6) ?? '—'}</span></div>
+            <div>Nearest Stop: <span className="font-semibold">{nearestStop?.name ?? '—'}</span></div>
+            <div>Nearest Stop Distance: <span className="font-semibold">{nearestStop?.distance != null ? `${nearestStop.distance}m` : '—'}</span></div>
+            <div>Total Stops Loaded: <span className="font-semibold">{busStops.length}</span></div>
+            <div>Nearby Stops Count: <span className="font-semibold">{nearbyStops.length}</span></div>
+          </div>
+        </div>
+      )}
+
+      <NearbyTransportMap
+        vehicles={vehicles}
+        latitude={latitude}
+        longitude={longitude}
+        nearbyStops={nearbyStops}
+      />
+
+      <NearbyBusStops
+        stops={nearbyStops}
+        loading={geoLoading || stopsLoading}
+        error={stopsError}
+      />
+
+      <AvailableBusRoutes
+        routes={nearbyRoutes}
+        loading={stopsLoading || routesLoading}
+        error={routesError}
+      />
 
       <div className="mb-8 grid gap-6 lg:grid-cols-3">
         <div>
@@ -305,27 +755,35 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          <div className="space-y-3">
-            {favouriteRoutes.map((route, i) => (
-              <div key={i} className="group rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md sm:p-5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm">
-                    <Star size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-gray-900">{route.name}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{route.from} → {route.to}</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
-                        <Calendar size={12} className="mr-1" />
-                        {route.frequency}
-                      </span>
+          {favouriteRoutes.length === 0 ? (
+            <EmptyState
+              icon={Star}
+              title="No favourite routes"
+              description="Save your frequently used routes for quick access."
+            />
+          ) : (
+            <div className="space-y-3">
+              {favouriteRoutes.map((route, i) => (
+                <div key={i} className="group rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm">
+                      <Star size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-gray-900">{route.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{route.from} → {route.to}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
+                          <Calendar size={12} className="mr-1" />
+                          {route.frequency}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -335,32 +793,40 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          <div className="space-y-0">
-            {recentTrips.map((trip, i) => (
-              <div key={i} className="relative flex gap-4 pb-6 last:pb-0">
-                {i < recentTrips.length - 1 && (
-                  <div className="absolute left-[17px] top-10 h-full w-0.5 bg-gray-200" />
-                )}
-                <div className="relative flex shrink-0 items-center justify-center">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                    i === 0 ? "bg-blue-500 text-white" : "bg-gray-50 text-gray-400"
-                  }`}>
-                    <Circle size={i === 0 ? 10 : 8} />
+          {recentTrips.length === 0 ? (
+            <EmptyState
+              icon={Navigation2}
+              title="No recent trips"
+              description="Your recent journeys will appear here."
+            />
+          ) : (
+            <div className="space-y-0">
+              {recentTrips.map((trip, i) => (
+                <div key={i} className="relative flex gap-4 pb-6 last:pb-0">
+                  {i < recentTrips.length - 1 && (
+                    <div className="absolute left-[17px] top-10 h-full w-0.5 bg-gray-200" />
+                  )}
+                  <div className="relative flex shrink-0 items-center justify-center">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                      i === 0 ? "bg-blue-500 text-white" : "bg-gray-50 text-gray-400"
+                    }`}>
+                      <Circle size={i === 0 ? 10 : 8} />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 pt-1">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {trip.from} <span className="text-gray-400">→</span> {trip.to}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">{trip.date}</p>
+                    <span className="mt-1.5 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
+                      <Bus size={12} className="mr-1" />
+                      {trip.route}
+                    </span>
                   </div>
                 </div>
-                <div className="min-w-0 flex-1 pt-1">
-                  <p className="text-sm font-semibold text-gray-900">
-                    {trip.from} <span className="text-gray-400">→</span> {trip.to}
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-500">{trip.date}</p>
-                  <span className="mt-1.5 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
-                    <Bus size={12} className="mr-1" />
-                    {trip.route}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -370,23 +836,31 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          <div className="space-y-3">
-            {notifications.map((notif, i) => {
-              const borderColor = notif.type === "info" ? "border-l-blue-500" : notif.type === "warning" ? "border-l-amber-500" : "border-l-red-500";
-              return (
-                <div key={i} className={`rounded-2xl border border-gray-100 border-l-4 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${borderColor} sm:p-5`}>
-                  <div className="flex items-start gap-3">
-                    <NotifIcon type={notif.type} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-gray-900">{notif.title}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{notif.description}</p>
-                      <p className="mt-1.5 text-xs font-medium text-gray-400">{notif.time}</p>
+          {notifications.length === 0 ? (
+            <EmptyState
+              icon={Bell}
+              title="No notifications"
+              description="You're all caught up!"
+            />
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notif, i) => {
+                const borderColor = notif.type === "info" ? "border-l-blue-500" : notif.type === "warning" ? "border-l-amber-500" : "border-l-red-500";
+                return (
+                  <div key={i} className={`rounded-2xl border border-gray-100 border-l-4 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${borderColor} sm:p-5`}>
+                    <div className="flex items-start gap-3">
+                      <NotifIcon type={notif.type} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-gray-900">{notif.title}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{notif.description}</p>
+                        <p className="mt-1.5 text-xs font-medium text-gray-400">{notif.time}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
