@@ -737,7 +737,7 @@ function PassengerDashboard() {
 
       <NearbyBusStops
         stops={nearbyStops}
-        loading={geoLoading || stopsLoading}
+        loading={stopsLoading}
         error={stopsError}
       />
 

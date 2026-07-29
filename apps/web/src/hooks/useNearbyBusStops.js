@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
-import busStops from "../data/transport/busStops";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchNearbyBusStops } from "../services/location/busStopService";
-import { calculateDistance } from "../utils/location/distance";
+import { findStopsNearby } from "../services/bus/stopService";
+
+const LOCAL_TIMEOUT_MS = 25000;
 
 function deduplicateStops(staticStops, dynamicStops) {
   const seen = new Set(
@@ -19,6 +20,7 @@ export default function useNearbyBusStops(latitude, longitude, radius = 1500) {
   const [nearbyStops, setNearbyStops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const fetchIdRef = useRef(0);
 
   const fetchStops = useCallback(async () => {
     if (latitude == null || longitude == null) {
@@ -28,28 +30,40 @@ export default function useNearbyBusStops(latitude, longitude, radius = 1500) {
       return;
     }
 
+    const fetchId = ++fetchIdRef.current;
     setLoading(true);
     setError(null);
 
-    const staticNearby = busStops
-      .map((stop) => {
-        const distance = calculateDistance(latitude, longitude, stop.latitude, stop.longitude);
-        return { ...stop, distance: Math.round(distance) };
-      })
-      .filter((stop) => stop.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
+    const staticNearby = findStopsNearby(latitude, longitude, radius);
 
+    let localTimeoutId;
     try {
-      const dynamicStops = await fetchNearbyBusStops(latitude, longitude, radius);
+      const dynamicPromise = fetchNearbyBusStops(latitude, longitude, radius);
+      const timeoutPromise = new Promise((_, reject) => {
+        localTimeoutId = setTimeout(
+          () => reject(new Error("Request timed out")),
+          LOCAL_TIMEOUT_MS
+        );
+      });
+
+      const dynamicStops = await Promise.race([dynamicPromise, timeoutPromise]);
+      clearTimeout(localTimeoutId);
+
+      if (fetchId !== fetchIdRef.current) return;
+
       const taggedDynamic = dynamicStops.map((s) => ({ ...s, _dynamic: true }));
       const merged = deduplicateStops(staticNearby, taggedDynamic);
       merged.sort((a, b) => a.distance - b.distance);
       setNearbyStops(merged);
     } catch (err) {
-      setError(err.message);
+      clearTimeout(localTimeoutId);
+      if (fetchId !== fetchIdRef.current) return;
+      setError(err.message || "Failed to fetch nearby stops");
       setNearbyStops(staticNearby);
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [latitude, longitude, radius]);
 

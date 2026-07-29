@@ -41,7 +41,6 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
   const cacheKey = getCacheKey(latitude, longitude, radius);
   const cached = getCachedData(cacheKey);
   if (cached) {
-    console.log(`[BusStopService] Returning ${cached.length} cached stops`);
     return cached;
   }
 
@@ -53,17 +52,14 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
     );
     out center;
   `;
-  console.log(`[BusStopService] Fetching stops near ${latitude},${longitude} (radius: ${radius}m)`);
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   let lastError;
 
   for (const url of OVERPASS_ENDPOINTS) {
-    try {
-      console.log(`[BusStopService] Trying endpoint: ${url}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+    try {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -80,8 +76,6 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
       const data = await response.json();
       const elements = data?.elements || [];
 
-      console.log(`[BusStopService] Found ${elements.length} raw elements`);
-
       if (elements.length === 0) {
         setCachedData(cacheKey, []);
         return [];
@@ -96,7 +90,7 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
           const distance = calculateDistance(latitude, longitude, stopLat, stopLng);
 
           return {
-            id: el.id,
+            id: String(el.id),
             name,
             latitude: stopLat,
             longitude: stopLng,
@@ -109,32 +103,22 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
       setCachedData(cacheKey, stops);
       return stops;
     } catch (err) {
+      clearTimeout(timer);
       lastError = err;
 
       if (err.name === "AbortError") {
-        console.log(`[BusStopService] Request timed out at ${url}`);
-        clearTimeout(timer);
-        break;
+        continue;
       }
-
-      console.warn(`[BusStopService] Endpoint failed: ${url} — ${err.message}`);
     }
   }
 
-  clearTimeout(timer);
-
   const fallback = getCachedData(cacheKey);
   if (fallback) {
-    console.log(`[BusStopService] Returning ${fallback.length} cached stops as fallback`);
     return fallback;
   }
 
   if (lastError?.name === "AbortError") {
     throw new Error("Request timed out. Please try again.");
-  }
-
-  if (lastError?.message?.includes("429") || lastError?.response?.status === 429) {
-    throw new Error("Too many requests. Please wait a moment and try again.");
   }
 
   if (!lastError) {
