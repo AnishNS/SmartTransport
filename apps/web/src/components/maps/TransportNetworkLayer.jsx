@@ -1,10 +1,9 @@
 import { Marker, Popup, Polyline, useMap } from "react-leaflet";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import L from "leaflet";
-import { getAllRoutes, getAllStops } from "../../services/transport/routeService";
-import { fetchNearbyBusStops } from "../../services/location/busStopService";
+import { getAllRoutes } from "../../services/transport/routeService";
+import { getAllBusStops } from "../../services/transport/stopService";
 import BusMarker from "./BusMarker";
-import busStops from "../../data/transport/busStops";
 
 const passengerIcon = new L.DivIcon({
   className: "passenger-location-marker",
@@ -55,39 +54,18 @@ const ROUTE_COLORS = [
   { color: "#dc2626", weight: 3, opacity: 0.6 },
 ];
 
-function createDynamicStopIcon() {
-  return new L.DivIcon({
-    className: "bus-stop-dynamic-marker",
-    html: `<div style="
-      width: 26px; height: 26px;
-      background: #0ea5e9;
-      border: 2.5px solid #0284c7;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 6px rgba(14,165,233,0.4);
-      font-size: 11px;
-      color: white;
-      opacity: 0.9;
-    ">📍</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-    popupAnchor: [0, -17],
-  });
-}
-
 function FitNetworkBounds({ latitude, longitude, vehicles }) {
   const map = useMap();
 
   useEffect(() => {
     const points = [];
+    const allStops = getAllBusStops();
 
     if (latitude != null && longitude != null) {
       points.push([latitude, longitude]);
     }
 
-    for (const stop of busStops) {
+    for (const stop of allStops) {
       points.push([stop.latitude, stop.longitude]);
     }
 
@@ -106,30 +84,8 @@ function FitNetworkBounds({ latitude, longitude, vehicles }) {
 }
 
 function TransportNetworkLayer({ latitude, longitude, vehicles }) {
-  const [dynamicStops, setDynamicStops] = useState([]);
+  const allStops = useMemo(() => getAllBusStops(), []);
   const routes = useMemo(() => getAllRoutes(), []);
-
-  useEffect(() => {
-    if (latitude == null || longitude == null) return;
-    let cancelled = false;
-    fetchNearbyBusStops(latitude, longitude, 1500)
-      .then((stops) => {
-        if (!cancelled) {
-          const staticCoords = new Set(
-            busStops.map((s) => `${s.latitude.toFixed(4)},${s.longitude.toFixed(4)}`)
-          );
-          setDynamicStops(
-            stops.filter(
-              (s) => !staticCoords.has(`${s.latitude.toFixed(4)},${s.longitude.toFixed(4)}`)
-            )
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDynamicStops([]);
-      });
-    return () => { cancelled = true; };
-  }, [latitude, longitude]);
 
   const polylines = useMemo(() => {
     return routes.map((route, i) => {
@@ -175,7 +131,7 @@ function TransportNetworkLayer({ latitude, longitude, vehicles }) {
         </Marker>
       )}
 
-      {busStops.map((stop) => (
+      {allStops.map((stop) => (
         <Marker
           key={stop.id}
           position={[stop.latitude, stop.longitude]}
@@ -192,33 +148,6 @@ function TransportNetworkLayer({ latitude, longitude, vehicles }) {
               {stop.routes && stop.routes.length > 0 && (
                 <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#666" }}>
                   Routes: {stop.routes.join(", ")}
-                </p>
-              )}
-              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#666" }}>
-                {stop.latitude.toFixed(5)}, {stop.longitude.toFixed(5)}
-              </p>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
-
-      {dynamicStops.map((stop) => (
-        <Marker
-          key={`osm-${stop.id}`}
-          position={[stop.latitude, stop.longitude]}
-          icon={createDynamicStopIcon()}
-        >
-          <Popup>
-            <div style={{ minWidth: "160px", fontFamily: "system-ui, sans-serif" }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: "13px", color: "#111" }}>
-                {stop.name}
-              </p>
-              <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#0ea5e9" }}>
-                Nearby Stop
-              </p>
-              {stop.distance != null && (
-                <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#666" }}>
-                  Distance: {stop.distance}m
                 </p>
               )}
               <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#666" }}>

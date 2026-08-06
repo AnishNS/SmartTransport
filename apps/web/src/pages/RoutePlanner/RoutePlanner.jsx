@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   MapPin,
   Navigation,
@@ -22,10 +22,10 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import EmptyState from "../../components/ui/EmptyState";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
-import { getCurrentPosition } from "../../services/location/locationService";
-import { recommendRoute, findNearestBoardingStop, findDestinationStop } from "../../services/routeRecommendationService";
+import usePassengerLocation from "../../hooks/usePassengerLocation";
+import { recommendBestRoute, findNearestStop, findDestinationStops } from "../../services/transport/routeRecommendationService";
 import { calculateDistance } from "../../utils/location/distance";
-import busStops from "../../data/transport/busStops";
+import { getAllBusStops } from "../../services/transport/stopService";
 
 const quickActions = [
   { label: "Track Live Vehicles", icon: Bus, gradient: "from-blue-500 to-blue-600", hoverBorder: "hover:border-blue-200" },
@@ -63,36 +63,30 @@ function StatCard({ icon: Icon, label, value, gradient }) {
 function RoutePlanner() {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
-  const [userLocation, setUserLocation] = useState(null);
-  const [locationLoading, setLocationLoading] = useState(true);
+  const { latitude, longitude, loading: locationLoading } = usePassengerLocation();
+  const userLocation = useMemo(
+    () => (latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null),
+    [latitude, longitude]
+  );
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef(null);
+  const sourceAutoFilled = useRef(false);
 
   useEffect(() => {
-    const fetchLocation = async () => {
-      try {
-        const pos = await getCurrentPosition({ timeout: 5000 });
-        setUserLocation({ lat: pos.latitude, lng: pos.longitude });
-        const stop = findNearestBoardingStop(pos.latitude, pos.longitude);
-        if (stop) {
-          setSource(stop.name);
-        }
-      } catch {
-        setUserLocation({ lat: 11.0168, lng: 76.9558 });
-        const stop = findNearestBoardingStop(11.0168, 76.9558);
-        if (stop) {
-          setSource(stop.name);
-        }
-      } finally {
-        setLocationLoading(false);
+    if (locationLoading || sourceAutoFilled.current || !userLocation) return;
+    Promise.resolve().then(() => {
+      if (sourceAutoFilled.current) return;
+      const stop = findNearestStop(userLocation.lat, userLocation.lng);
+      if (stop) {
+        setSource(stop.name);
+        sourceAutoFilled.current = true;
       }
-    };
-    fetchLocation();
-  }, []);
+    });
+  }, [locationLoading, userLocation]);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -109,7 +103,7 @@ function RoutePlanner() {
     setResult(null);
     setError(null);
     if (value.trim().length >= 2) {
-      const matches = findDestinationStop(value);
+      const matches = findDestinationStops(value);
       setSuggestions(matches);
       setShowSuggestions(matches.length > 0);
     } else {
@@ -143,7 +137,10 @@ function RoutePlanner() {
     }
 
     setSearching(true);
-    const recResult = recommendRoute(userLocation.lat, userLocation.lng, destination);
+    const recResult = recommendBestRoute(
+      { latitude: userLocation.lat, longitude: userLocation.lng },
+      destination
+    );
 
     if (recResult.error) {
       setError(recResult.error);
@@ -210,7 +207,7 @@ function RoutePlanner() {
                             size={14}
                             className="absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-400 cursor-pointer hover:text-blue-600"
                             onClick={() => {
-                              const stop = findNearestBoardingStop(userLocation.lat, userLocation.lng);
+                              const stop = findNearestStop(userLocation.lat, userLocation.lng);
                               if (stop) {
                                 setSource(stop.name);
                               }
@@ -298,13 +295,13 @@ function RoutePlanner() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-gray-900">{result.recommendedRoute.routeNumber}</p>
+                        <p className="text-sm font-bold text-gray-900">{result.route.routeNumber}</p>
                         <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
                           <Award size={12} className="mr-1" />
                           Direct Route
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs text-gray-500">{result.recommendedRoute.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{result.route.name}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
@@ -320,7 +317,7 @@ function RoutePlanner() {
                   <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
                     <span className="inline-flex items-center gap-1 font-medium text-gray-800">
                       <Route size={13} className="text-gray-400" />
-                      {result.stopsBetween} stops
+                      {result.numberOfStops} stops
                     </span>
                     <span className="inline-flex items-center gap-1 font-medium text-gray-800">
                       <Clock size={13} className="text-gray-400" />
@@ -370,9 +367,9 @@ function RoutePlanner() {
                 <SectionHeader title="Journey Summary" />
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <StatCard icon={Clock} label="Travel Time" value={result.estimatedTime} gradient="from-blue-500 to-blue-600" />
-                  <StatCard icon={Route} label="Stops" value={`${result.stopsBetween} stops`} gradient="from-emerald-500 to-emerald-600" />
+                  <StatCard icon={Route} label="Stops" value={`${result.numberOfStops} stops`} gradient="from-emerald-500 to-emerald-600" />
                   <StatCard icon={MapPin} label="Distance" value={result.distance} gradient="from-violet-500 to-violet-600" />
-                  <StatCard icon={Bus} label="Route" value={result.recommendedRoute.routeNumber} gradient="from-amber-500 to-amber-600" />
+                  <StatCard icon={Bus} label="Route" value={result.route.routeNumber} gradient="from-amber-500 to-amber-600" />
                 </div>
               </Card>
             </div>
@@ -388,7 +385,7 @@ function RoutePlanner() {
                   <button
                     onClick={() => {
                       if (userLocation) {
-                        const stop = findNearestBoardingStop(userLocation.lat, userLocation.lng);
+                        const stop = findNearestStop(userLocation.lat, userLocation.lng);
                         if (stop) {
                           setSource(stop.name);
                         }
@@ -407,7 +404,7 @@ function RoutePlanner() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {busStops.slice(0, 6).map((stop) => {
+                  {getAllBusStops().slice(0, 6).map((stop) => {
                     const dist = userLocation
                       ? Math.round(calculateDistance(userLocation.lat, userLocation.lng, stop.latitude, stop.longitude))
                       : null;

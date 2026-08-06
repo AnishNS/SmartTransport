@@ -1,27 +1,27 @@
 import { useState, useEffect } from "react";
 import {
-  startSimulation,
-  stopSimulation,
-  subscribe,
-} from "../services/simulation/vehicleSimulation";
+  startVehicleSimulation,
+  stopVehicleSimulation,
+  subscribeToVehicles,
+} from "../services/transport/vehicleSimulationService";
 
 export default function useLiveVehicles() {
-  const [vehicles, setVehicles] = useState(() => {
-    const initial = startSimulation();
-    return initial;
-  });
-  const loading = false;
+  const [vehicles, setVehicles] = useState(() => startVehicleSimulation());
 
   useEffect(() => {
-    const unsubscribe = subscribe((updated) => {
+    // Restart the simulation if a previous unmount (e.g. StrictMode cleanup)
+    // stopped it, then keep the component in sync with each movement tick.
+    startVehicleSimulation();
+
+    const unsubscribe = subscribeToVehicles((updated) => {
       setVehicles([...updated]);
     });
 
     return () => {
       unsubscribe();
-      stopSimulation();
+      stopVehicleSimulation();
     };
   }, []);
 
-  return { vehicles, loading };
+  return { vehicles, loading: false };
 }

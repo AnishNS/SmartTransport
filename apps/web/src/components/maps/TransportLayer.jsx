@@ -1,7 +1,7 @@
 import { Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import BusStopMarker from "./BusStopMarker";
-import busStops from "../../data/transport/busStops";
+import { getAllBusStops } from "../../services/transport/stopService";
 import { useEffect } from "react";
 
 const passengerIcon = new L.DivIcon({
@@ -25,7 +25,7 @@ function FitBounds({ latitude, longitude }) {
     if (latitude == null || longitude == null) return;
 
     const points = [[latitude, longitude]];
-    busStops.forEach((s) => points.push([s.latitude, s.longitude]));
+    getAllBusStops().forEach((s) => points.push([s.latitude, s.longitude]));
 
     if (points.length > 1) {
       map.fitBounds(points, { padding: [50, 50], maxZoom: 16 });
@@ -44,7 +44,7 @@ function TransportLayer({ latitude, longitude }) {
       {latitude != null && longitude != null && (
         <Marker position={[latitude, longitude]} icon={passengerIcon} />
       )}
-      {busStops.map((stop) => (
+      {getAllBusStops().map((stop) => (
         <BusStopMarker
           key={stop.id}
           stop={stop}

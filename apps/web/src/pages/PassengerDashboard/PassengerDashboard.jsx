@@ -27,11 +27,11 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
-import useGeolocation from "../../hooks/useGeolocation";
+import usePassengerLocation from "../../hooks/usePassengerLocation";
 import useNearbyBusStops from "../../hooks/useNearbyBusStops";
 import useNearbyRoutes from "../../hooks/useNearbyRoutes";
 import useLiveVehicles from "../../hooks/useLiveVehicles";
-import busStops from "../../data/transport/busStops";
+import { getAllBusStops } from "../../services/transport/stopService";
 import { calculateDistance } from "../../utils/location/distance";
 import MapView from "../../components/maps/MapView";
 
@@ -69,6 +69,12 @@ const sectionHeader = (title, action) => (
     {action}
   </div>
 );
+
+const formatDistance = (meters) => {
+  if (meters == null) return "—";
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${Math.round(meters)} m`;
+};
 
 function StatCard({ icon: Icon, label, value, trend, trendUp, gradient }) {
   return (
@@ -137,8 +143,7 @@ function NotifIcon({ type }) {
   );
 }
 
-function LocationPreview() {
-  const { latitude, longitude, accuracy, address, city, loading, error } = useGeolocation();
+function LocationPreview({ latitude, longitude, accuracy, address, city, loading, error }) {
 
   if (loading && !latitude) {
     return (
@@ -228,7 +233,7 @@ function LocationPreview() {
   );
 }
 
-function NearbyBusStops({ stops, loading, error }) {
+function NearbyBusStops({ stops, loading, error, nearestStop }) {
   if (loading) {
     return (
       <div className="mb-8">
@@ -260,8 +265,8 @@ function NearbyBusStops({ stops, loading, error }) {
         {sectionHeader("Nearby Bus Stops")}
         <EmptyState
           icon={AlertCircle}
-          title="Unable to fetch nearby stops"
-          description="Showing available transport network."
+          title="Unable to load nearby stops"
+          description="Unable to load nearby stops. Using available transport data."
         />
       </div>
     );
@@ -271,11 +276,25 @@ function NearbyBusStops({ stops, loading, error }) {
     return (
       <div className="mb-8">
         {sectionHeader("Nearby Bus Stops")}
-        <EmptyState
-          icon={MapPin}
-          title="No stops nearby"
-          description="No bus stops found within 1.5 km of your location."
-        />
+        <Card className="border-gray-100 bg-white shadow-sm">
+          <div className="space-y-1.5">
+            <p className="text-sm font-semibold text-gray-900">No stops within radius.</p>
+            {nearestStop ? (
+              <>
+                <p className="text-sm text-gray-500">
+                  Nearest Stop:{" "}
+                  <span className="font-semibold text-gray-800">{nearestStop.name}</span>
+                </p>
+                <p className="text-sm text-gray-500">
+                  Distance:{" "}
+                  <span className="font-semibold text-gray-800">{formatDistance(nearestStop.distance)}</span>
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">No bus stops found nearby.</p>
+            )}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -292,7 +311,7 @@ function NearbyBusStops({ stops, loading, error }) {
       {error && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
           <AlertCircle size={16} className="shrink-0 text-amber-500" />
-          <span>Unable to fetch nearby stops. Showing available transport network.</span>
+          <span>Unable to load nearby stops. Using available transport data.</span>
         </div>
       )}
 
@@ -423,12 +442,13 @@ function AvailableBusRoutes({ routes, loading, error }) {
   );
 }
 
-function NearbyTransportMap({ vehicles = [], latitude, longitude, nearbyStops }) {
-  const nearestStop = nearbyStops.length > 0
-    ? nearbyStops.reduce((a, b) => (a.distance < b.distance ? a : b))
-    : null;
+function NearbyTransportMap({ vehicles = [], latitude, longitude, nearbyStops, nearestStop = null }) {
+  const nearestStopFallback = nearestStop
+    || (nearbyStops.length > 0
+      ? nearbyStops.reduce((a, b) => (a.distance < b.distance ? a : b))
+      : null);
 
-  const totalBusStops = busStops.length;
+  const totalBusStops = getAllBusStops().length;
 
   return (
     <div className="mb-8">
@@ -450,13 +470,13 @@ function NearbyTransportMap({ vehicles = [], latitude, longitude, nearbyStops })
             <span className="font-medium text-gray-700">
               Network Stops: <span className="font-bold text-gray-900">{totalBusStops}</span>
             </span>
-            {nearestStop && (
+            {nearestStopFallback && (
               <>
                 <span className="font-medium text-gray-700">
-                  Nearest Stop: <span className="font-bold text-gray-900">{nearestStop.name}</span>
+                  Nearest Stop: <span className="font-bold text-gray-900">{nearestStopFallback.name}</span>
                 </span>
                 <span className="font-medium text-gray-700">
-                  Distance: <span className="font-bold text-gray-900">{nearestStop.distance}m</span>
+                  Distance: <span className="font-bold text-gray-900">{formatDistance(nearestStopFallback.distance)}</span>
                 </span>
               </>
             )}
@@ -519,14 +539,9 @@ function PassengerDashboard() {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
   const { vehicles, loading: vehiclesLoading } = useLiveVehicles();
-  const { latitude, longitude, loading: geoLoading, error: geoError } = useGeolocation();
-  const { busStops: nearbyStops, loading: stopsLoading, error: stopsError } = useNearbyBusStops(latitude, longitude);
+  const { latitude, longitude, accuracy, address, city, loading: geoLoading, error: geoError } = usePassengerLocation();
+  const { busStops: nearbyStops, nearestStop, loading: stopsLoading, error: stopsError } = useNearbyBusStops(latitude, longitude);
   const { routes: nearbyRoutes, loading: routesLoading, error: routesError } = useNearbyRoutes(latitude, longitude, nearbyStops);
-
-  const nearestStop = useMemo(() => {
-    if (nearbyStops.length === 0) return null;
-    return nearbyStops.reduce((a, b) => (a.distance < b.distance ? a : b));
-  }, [nearbyStops]);
 
   const swapLocations = () => {
     setSource(destination);
@@ -587,7 +602,15 @@ function PassengerDashboard() {
         ))}
       </div>
 
-      <LocationPreview />
+      <LocationPreview
+        latitude={latitude}
+        longitude={longitude}
+        accuracy={accuracy}
+        address={address}
+        city={city}
+        loading={geoLoading}
+        error={geoError}
+      />
 
       <Card className="mb-8 border-gray-100 shadow-sm">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -722,7 +745,7 @@ function PassengerDashboard() {
             <div>Passenger Longitude: <span className="font-semibold">{longitude?.toFixed(6) ?? '—'}</span></div>
             <div>Nearest Stop: <span className="font-semibold">{nearestStop?.name ?? '—'}</span></div>
             <div>Nearest Stop Distance: <span className="font-semibold">{nearestStop?.distance != null ? `${nearestStop.distance}m` : '—'}</span></div>
-            <div>Total Stops Loaded: <span className="font-semibold">{busStops.length}</span></div>
+            <div>Total Stops Loaded: <span className="font-semibold">{getAllBusStops().length}</span></div>
             <div>Nearby Stops Count: <span className="font-semibold">{nearbyStops.length}</span></div>
           </div>
         </div>
@@ -733,12 +756,14 @@ function PassengerDashboard() {
         latitude={latitude}
         longitude={longitude}
         nearbyStops={nearbyStops}
+        nearestStop={nearestStop}
       />
 
       <NearbyBusStops
         stops={nearbyStops}
         loading={stopsLoading}
         error={stopsError}
+        nearestStop={nearestStop}
       />
 
       <AvailableBusRoutes
