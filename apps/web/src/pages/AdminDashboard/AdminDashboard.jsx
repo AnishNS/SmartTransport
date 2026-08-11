@@ -1,17 +1,13 @@
+import { useMemo } from "react";
 import {
   Bus,
   Users,
-  Clock,
-  Crosshair,
-  AlertTriangle,
   Route,
   UserCheck,
-  TrendingUp,
   ChevronRight,
   Bell,
-  Wrench,
-  FileText,
   Shield,
+  FileText,
 } from "lucide-react";
 import {
   BarChart,
@@ -26,53 +22,33 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
+import {
+  getKpis,
+  getFleetOverview,
+  getRoutePerformance,
+  getDrivers,
+  getAlerts,
+  getWeeklyAnalytics,
+  getWeeklyAverage,
+} from "../../services/mock/adminService";
 
-const kpiData = [
-  { icon: Bus, label: "Active Vehicles", value: "24", gradient: "from-blue-500 to-blue-600", change: "+3" },
-  { icon: UserCheck, label: "Drivers Online", value: "18", gradient: "from-emerald-500 to-emerald-600", change: "+2" },
-  { icon: Users, label: "Daily Passengers", value: "1,847", gradient: "from-blue-500 to-blue-600", change: "+12%" },
-  { icon: Crosshair, label: "Average ETA Accuracy", value: "94%", gradient: "from-emerald-500 to-emerald-600", change: "+1%" },
-];
+const kpiIcons = {
+  totalVehicles: Bus,
+  activeVehicles: Bus,
+  totalDrivers: UserCheck,
+  driversOnline: UserCheck,
+  totalRoutes: Route,
+  dailyPassengers: Users,
+};
 
-const fleetData = [
-  { route: "Route 42", vehicles: 6, active: 5, maintenance: 1 },
-  { route: "Route 15", vehicles: 4, active: 4, maintenance: 0 },
-  { route: "Route 7", vehicles: 5, active: 3, maintenance: 2 },
-  { route: "Route 21", vehicles: 4, active: 4, maintenance: 0 },
-  { route: "Route 33", vehicles: 5, active: 5, maintenance: 0 },
-];
-
-const alerts = [
-  { title: "Vehicle TN-01-EF-9012 in maintenance", description: "Route 7 bus reported engine issue. Estimated downtime: 4 hours.", time: "30 min ago", type: "warning" },
-  { title: "Driver reported for Route 42", description: "Driver Sharma is running 8 min late due to traffic on MG Road.", time: "1 hour ago", type: "alert" },
-  { title: "New route optimization available", description: "AI analysis suggests 12% time savings on Route 21 with rerouting.", time: "2 hours ago", type: "info" },
-];
-
-const routePerformance = [
-  { route: "Route 42", trips: 24, occupancy: 78, onTime: 92 },
-  { route: "Route 15", trips: 18, occupancy: 85, onTime: 88 },
-  { route: "Route 7", trips: 20, occupancy: 62, onTime: 75 },
-  { route: "Route 21", trips: 16, occupancy: 91, onTime: 94 },
-  { route: "Route 33", trips: 22, occupancy: 55, onTime: 96 },
-];
-
-const drivers = [
-  { name: "Rajesh Sharma", vehicle: "TN-01-AB-1234", route: "Route 42", status: "On Trip", trips: 4 },
-  { name: "Suresh Patel", vehicle: "TN-01-CD-5678", route: "Route 15", status: "Online", trips: 3 },
-  { name: "Amit Verma", vehicle: "TN-01-EF-9012", route: "Route 7", status: "Offline", trips: 2 },
-  { name: "Vikram Singh", vehicle: "TN-01-GH-3456", route: "Route 21", status: "On Trip", trips: 5 },
-  { name: "Deepak Kumar", vehicle: "TN-01-IJ-7890", route: "Route 33", status: "Online", trips: 3 },
-];
-
-const analyticsData = [
-  { day: "Mon", passengers: 420 },
-  { day: "Tue", passengers: 380 },
-  { day: "Wed", passengers: 510 },
-  { day: "Thu", passengers: 470 },
-  { day: "Fri", passengers: 590 },
-  { day: "Sat", passengers: 320 },
-  { day: "Sun", passengers: 280 },
-];
+const kpiGradients = {
+  totalVehicles: "from-blue-500 to-blue-600",
+  activeVehicles: "from-emerald-500 to-emerald-600",
+  totalDrivers: "from-blue-500 to-blue-600",
+  driversOnline: "from-emerald-500 to-emerald-600",
+  totalRoutes: "from-blue-500 to-blue-600",
+  dailyPassengers: "from-emerald-500 to-emerald-600",
+};
 
 const statusColors = {
   "On Trip": "bg-blue-50 text-blue-700",
@@ -81,7 +57,7 @@ const statusColors = {
 };
 
 function KpiCard({ icon: Icon, label, value, gradient, change }) {
-  const isPositive = change.startsWith("+");
+  const isPositive = !change || change.startsWith("+");
   return (
     <Card hover className="relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600" />
@@ -95,9 +71,11 @@ function KpiCard({ icon: Icon, label, value, gradient, change }) {
             <p className="text-xs font-medium text-gray-500">{label}</p>
           </div>
         </div>
-        <span className={`text-xs font-semibold ${isPositive ? "text-emerald-600" : "text-red-600"}`}>
-          {change}
-        </span>
+        {change && (
+          <span className={`text-xs font-semibold ${isPositive ? "text-emerald-600" : "text-red-600"}`}>
+            {change}
+          </span>
+        )}
       </div>
     </Card>
   );
@@ -130,6 +108,24 @@ function NotifIcon({ type }) {
 }
 
 function AdminDashboard() {
+  const {
+    kpiData,
+    fleetData,
+    alerts,
+    routePerformance,
+    drivers,
+    analyticsData,
+    weeklyAverage,
+  } = useMemo(() => ({
+    kpiData: getKpis(),
+    fleetData: getFleetOverview(),
+    alerts: getAlerts(),
+    routePerformance: getRoutePerformance(),
+    drivers: getDrivers(),
+    analyticsData: getWeeklyAnalytics(),
+    weeklyAverage: getWeeklyAverage(),
+  }), []);
+
   return (
     <DashboardLayout title="Admin Dashboard" role="admin">
       <PageHeader
@@ -143,7 +139,14 @@ function AdminDashboard() {
 
       <div className="mb-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {kpiData.map((kpi) => (
-          <KpiCard key={kpi.label} {...kpi} />
+          <KpiCard
+            key={kpi.key}
+            icon={kpiIcons[kpi.key] || Bus}
+            label={kpi.label}
+            value={typeof kpi.value === "number" ? kpi.value.toLocaleString("en-IN") : kpi.value}
+            gradient={kpiGradients[kpi.key] || "from-blue-500 to-blue-600"}
+            change={kpi.change}
+          />
         ))}
       </div>
 
@@ -296,7 +299,7 @@ function AdminDashboard() {
           </div>
           <div className="mt-4 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3">
             <span className="text-sm font-medium text-blue-700">Weekly Average</span>
-            <span className="text-lg font-bold text-blue-700">424</span>
+            <span className="text-lg font-bold text-blue-700">{weeklyAverage.toLocaleString("en-IN")}</span>
           </div>
         </Card>
       </div>
@@ -335,7 +338,7 @@ function AdminDashboard() {
                   <td className="py-3 pr-4 text-gray-700">{driver.vehicle}</td>
                   <td className="py-3 pr-4 text-gray-700">{driver.route}</td>
                   <td className="py-3 pr-4">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[driver.status]}`}>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[driver.status] || statusColors.Offline}`}>
                       {driver.status}
                     </span>
                   </td>

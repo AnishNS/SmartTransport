@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Bus, Bell, ChevronDown, User, Settings, LogOut, Menu } from "lucide-react";
+import { authService } from "../../services/auth";
 
 function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, sidebarCollapsed }) {
   const location = useLocation();
@@ -9,6 +10,7 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+  const currentUser = user || authService.getCurrentUser();
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -68,7 +70,7 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
               className="flex items-center gap-2 rounded-xl p-1.5 pr-2.5 transition-colors hover:bg-gray-100"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-xs font-bold text-white shadow-sm">
-                {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
               </div>
               <ChevronDown
                 size={14}
@@ -80,10 +82,10 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
               <div className="absolute right-0 top-full mt-2 w-56 origin-top-right rounded-2xl border border-gray-100 bg-white p-1.5 shadow-2xl shadow-black/5 ring-1 ring-black/5">
                 <div className="border-b border-gray-100 px-3 py-2.5">
                   <p className="text-sm font-semibold text-gray-900">
-                    {user?.name || "User"}
+                    {currentUser?.name || "User"}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
-                    {user?.email || "user@smarttransport.in"}
+                    {currentUser?.email || "user@smarttransport.in"}
                   </p>
                 </div>
                 <div className="mt-1 space-y-0.5">
@@ -109,6 +111,7 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
                 <div className="mt-1 border-t border-gray-100 pt-1">
                   <button
                     onClick={() => {
+                      authService.logoutUser();
                       navigate("/login");
                       setProfileOpen(false);
                     }}

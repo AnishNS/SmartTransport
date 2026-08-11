@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Bus,
   MapPin,
@@ -7,12 +7,16 @@ import {
   Navigation,
   ArrowLeft,
   Loader2,
-  UserPlus,
+  User,
+  Mail,
+  Phone,
+  Lock,
+  Home,
+  PhoneCall,
+  UserRoundCheck,
   CheckCircle2,
-  AlertCircle,
 } from "lucide-react";
 import InputField from "../../components/forms/InputField";
-import RoleSelector from "../../components/forms/RoleSelector";
 import { authService } from "../../services/auth";
 
 const highlights = [
@@ -30,35 +34,62 @@ const highlights = [
   },
 ];
 
-function Login() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [role, setRole] = useState("passenger");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState("");
-  const signupSuccess = location.state?.signupSuccess;
+const NAME_MIN = 3;
+const PASSWORD_MIN = 8;
 
-  const handleSignupClick = () => {
-    navigate("/signup");
+function Signup() {
+  const navigate = useNavigate();
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    address: "",
+    emergencyContact: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const updateField = (field) => (e) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
   const validate = () => {
-    const newErrors = {};
-    if (!email) {
-      newErrors.email = "Email is required";
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = "Invalid email format";
+    const nextErrors = {};
+
+    if (!form.name.trim()) {
+      nextErrors.name = "Full name is required";
+    } else if (form.name.trim().length < NAME_MIN) {
+      nextErrors.name = `Name must be at least ${NAME_MIN} characters`;
     }
-    if (!password) {
-      newErrors.password = "Password is required";
-    } else if (password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
+
+    if (!form.email.trim()) {
+      nextErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) {
+      nextErrors.email = "Enter a valid email (e.g. example@domain.com)";
     }
-    return newErrors;
+
+    if (!form.phone.trim()) {
+      nextErrors.phone = "Phone number is required";
+    } else if (!/^\+?[0-9\s()-]{8,16}$/.test(form.phone.trim())) {
+      nextErrors.phone = "Enter a valid phone number";
+    }
+
+    if (!form.password) {
+      nextErrors.password = "Password is required";
+    } else if (form.password.length < PASSWORD_MIN) {
+      nextErrors.password = `Password must be at least ${PASSWORD_MIN} characters`;
+    }
+
+    if (!form.confirmPassword) {
+      nextErrors.confirmPassword = "Please confirm your password";
+    } else if (form.confirmPassword !== form.password) {
+      nextErrors.confirmPassword = "Passwords do not match";
+    }
+
+    return nextErrors;
   };
 
   const handleSubmit = (e) => {
@@ -68,18 +99,22 @@ function Login() {
     if (Object.keys(validationErrors).length > 0) return;
 
     setLoading(true);
-    setFormError("");
     setTimeout(() => {
-      const result = authService.loginUser({ email, password, role });
+      const result = authService.registerPassenger(form);
       setLoading(false);
 
       if (!result.success) {
-        setFormError(result.error);
+        setErrors({ email: result.error });
         return;
       }
 
-      navigate(authService.roleHomePath[result.user.role] || `/${result.user.role}`);
-    }, 1200);
+      setSuccess(true);
+      setTimeout(() => {
+        navigate("/login", {
+          state: { signupSuccess: true, email: result.user.email },
+        });
+      }, 1800);
+    }, 1000);
   };
 
   return (
@@ -112,8 +147,9 @@ function Login() {
                 </span>
               </h1>
               <p className="mt-4 max-w-md text-base leading-relaxed text-blue-200/70">
-                Sign in to access real-time vehicle tracking, intelligent
-                arrival predictions, and comprehensive route management tools.
+                Create your passenger account to access real-time vehicle
+                tracking, intelligent arrival predictions, and multi-route
+                journey planning.
               </p>
             </div>
 
@@ -201,14 +237,14 @@ function Login() {
           <div className="rounded-3xl border border-gray-100 bg-white p-8 shadow-xl shadow-gray-200/50 sm:p-10">
             <div className="mb-8 text-center">
               <h2 className="text-2xl font-extrabold text-gray-900">
-                Welcome Back
+                Create Passenger Account
               </h2>
               <p className="mt-2 text-sm text-gray-500">
-                Sign in to your account to continue
+                Join SmartTransport to start planning your journeys
               </p>
             </div>
 
-            {signupSuccess && (
+            {success && (
               <div className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-600" />
                 <div>
@@ -220,93 +256,133 @@ function Login() {
               </div>
             )}
 
-            {formError && (
-              <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <AlertCircle size={18} className="shrink-0 text-red-500" />
-                <p className="text-sm text-red-600">{formError}</p>
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-5">
-              <RoleSelector value={role} onChange={setRole} />
+              <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                    <UserRoundCheck size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-blue-800">
+                      Account Role
+                    </p>
+                    <p className="text-xs text-blue-600/70">Passenger</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
+                  passenger
+                </span>
+              </div>
 
-              <InputField
-                label="Email Address"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                error={errors.email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+              <div className="space-y-4 border-t border-gray-100 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                  Personal Information
+                </p>
 
-              <InputField
-                label="Password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                error={errors.password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+                <InputField
+                  label="Full Name"
+                  icon={User}
+                  placeholder="Enter your full name"
+                  value={form.name}
+                  error={errors.name}
+                  onChange={updateField("name")}
+                />
 
-              <div className="flex items-center justify-between">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30"
-                  />
-                  <span className="text-sm text-gray-600">Remember me</span>
-                </label>
-                <a
-                  href="#"
-                  className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-700"
-                >
-                  Forgot password?
-                </a>
+                <InputField
+                  label="Email Address"
+                  type="email"
+                  icon={Mail}
+                  placeholder="you@example.com"
+                  value={form.email}
+                  error={errors.email}
+                  onChange={updateField("email")}
+                />
+
+                <InputField
+                  label="Phone Number"
+                  type="tel"
+                  icon={Phone}
+                  placeholder="+91 98765 43210"
+                  value={form.phone}
+                  error={errors.phone}
+                  onChange={updateField("phone")}
+                />
+
+                <InputField
+                  label="Password"
+                  type="password"
+                  icon={Lock}
+                  placeholder="Minimum 8 characters"
+                  value={form.password}
+                  error={errors.password}
+                  onChange={updateField("password")}
+                />
+
+                <InputField
+                  label="Confirm Password"
+                  type="password"
+                  icon={Lock}
+                  placeholder="Re-enter your password"
+                  value={form.confirmPassword}
+                  error={errors.confirmPassword}
+                  onChange={updateField("confirmPassword")}
+                />
+              </div>
+
+              <div className="space-y-4 border-t border-gray-100 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                  Additional Information{" "}
+                  <span className="normal-case tracking-normal text-gray-300">
+                    (Optional)
+                  </span>
+                </p>
+
+                <InputField
+                  label="Address"
+                  icon={Home}
+                  placeholder="Street, city, pincode"
+                  value={form.address}
+                  error={errors.address}
+                  onChange={updateField("address")}
+                />
+
+                <InputField
+                  label="Emergency Contact"
+                  type="tel"
+                  icon={PhoneCall}
+                  placeholder="+91 98765 43210"
+                  value={form.emergencyContact}
+                  error={errors.emergencyContact}
+                  onChange={updateField("emergencyContact")}
+                />
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || success}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/30 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {loading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Signing in...
+                    Creating account...
                   </>
                 ) : (
-                  "Sign In"
+                  "Create Account"
                 )}
               </button>
             </form>
 
-            {role === "passenger" && (
-              <div className="mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-white px-4 text-xs font-medium uppercase tracking-wider text-gray-400">
-                      New passenger?
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSignupClick}
-                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-blue-600 px-6 py-3.5 text-sm font-semibold text-blue-600 transition-all duration-300 hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-600/10"
+            <div className="mt-8 text-center space-y-4">
+              <p className="text-sm text-gray-500">
+                Already have an account?{" "}
+                <Link
+                  to="/login"
+                  className="font-medium text-blue-600 transition-colors hover:text-blue-700"
                 >
-                  <UserPlus size={18} />
-                  Create Passenger Account
-                </button>
-              </div>
-            )}
-
-            <div className="mt-8 text-center">
+                  Sign in
+                </Link>
+              </p>
               <Link
                 to="/"
                 className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-blue-600"
@@ -322,4 +398,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default Signup;

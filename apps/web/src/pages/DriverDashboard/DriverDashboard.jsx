@@ -21,24 +21,28 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-
-const driverStats = [
-  { icon: Bus, label: "Today's Trips", value: "6", gradient: "from-blue-500 to-blue-600" },
-  { icon: PlayCircle, label: "Active Trip", value: "1", gradient: "from-emerald-500 to-emerald-600" },
-  { icon: Users, label: "Passengers Today", value: "86", gradient: "from-blue-500 to-blue-600" },
-  { icon: Clock, label: "On-Time Performance", value: "92%", gradient: "from-emerald-500 to-emerald-600" },
-];
-
-const notifications = [
-  { title: "New route assigned", description: "Route 42 has been assigned for your next trip.", time: "10 min ago", type: "info" },
-  { title: "Traffic ahead on Route 7", description: "Expect delays of 5-8 minutes near City Market.", time: "25 min ago", type: "warning" },
-  { title: "Maintenance reminder", description: "Vehicle TN-01-AB-1234 is due for service in 500 km.", time: "2 hours ago", type: "alert" },
-];
+import useDriverTrip from "../../hooks/useDriverTrip";
+import useLiveVehicles from "../../hooks/useLiveVehicles";
+import {
+  getCurrentDriver,
+  getAssignedVehicle,
+  getAssignedRoute,
+  getCurrentShift,
+  getDriverTripStats,
+  getDriverNotifications,
+  getRouteStops,
+  getTripStatusLabel,
+} from "../../services/mock/driverService";
 
 const statusStyles = {
   Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "On Trip": "bg-blue-50 text-blue-700 border-blue-200",
+  "In Progress": "bg-emerald-50 text-emerald-700 border-emerald-200",
   Inactive: "bg-gray-50 text-gray-600 border-gray-200",
   Maintenance: "bg-amber-50 text-amber-700 border-amber-200",
+  Paused: "bg-amber-50 text-amber-700 border-amber-200",
+  Completed: "bg-gray-50 text-gray-600 border-gray-200",
+  "Not Started": "bg-gray-50 text-gray-600 border-gray-200",
 };
 
 function StatusBadge({ status }) {
@@ -106,12 +110,59 @@ function DetailRow({ icon: Icon, label, value }) {
   );
 }
 
+function formatElapsed(state) {
+  const start = state.startedAt ? new Date(state.startedAt).getTime() : null;
+  if (start == null) return "0s";
+  const end =
+    state.status === "completed" && state.endedAt
+      ? new Date(state.endedAt).getTime()
+      : state.status === "paused"
+        ? new Date(state.pausedAt).getTime()
+        : Date.now();
+  const totalMs = Math.max(0, end - start - state.totalPausedMs);
+  const minutes = Math.floor(totalMs / 60000);
+  const seconds = Math.floor((totalMs % 60000) / 1000);
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 function DriverDashboard() {
+  const driver = getCurrentDriver();
+  const vehicle = getAssignedVehicle(driver?.id);
+  const route = getAssignedRoute(driver?.id);
+  const shift = getCurrentShift(driver?.id);
+  const tripStats = getDriverTripStats(driver?.id);
+  const notifications = getDriverNotifications(driver?.id);
+  const routeStops = getRouteStops(route?.id);
+  const { vehicles: liveVehicles } = useLiveVehicles();
+  const { tripState, startTrip, pauseTrip, resumeTrip, endTrip } = useDriverTrip();
+
+  const liveVehicle = vehicle ? liveVehicles.find((v) => v.id === vehicle.id) : null;
+  const isTripActive = tripState.status === "in_progress" || tripState.status === "paused";
+
+  const nextStop = liveVehicle?.nextStop || routeStops[1]?.name || routeStops[0]?.name || "—";
+  const remainingStops = Math.max(0, routeStops.length - 1);
+  const currentSpeed = liveVehicle?.speed || vehicle?.speed || 0;
+  const delayStatus = liveVehicle?.status === "Delayed" ? "Delayed" : "On Time";
+  const lastUpdated = liveVehicle ? "just now" : "2 min ago";
+
+  const displayVehicleStatus = isTripActive
+    ? tripState.status === "paused"
+      ? "Paused"
+      : "On Trip"
+    : vehicle?.status || "Active";
+
+  const driverStats = [
+    { icon: Bus, label: "Today's Trips", value: String(tripStats.tripsToday + tripState.tripsCompleted), gradient: "from-blue-500 to-blue-600" },
+    { icon: PlayCircle, label: "Active Trip", value: String(isTripActive ? 1 : 0), gradient: "from-emerald-500 to-emerald-600" },
+    { icon: Users, label: "Passengers Today", value: String(tripStats.passengersToday), gradient: "from-blue-500 to-blue-600" },
+    { icon: Clock, label: "On-Time Performance", value: `${tripStats.onTimePerformance}%`, gradient: "from-emerald-500 to-emerald-600" },
+  ];
+
   return (
     <DashboardLayout title="Driver Dashboard" role="driver">
       <PageHeader
         title="Driver Dashboard"
-        subtitle="Manage your assigned trips and update live vehicle status."
+        subtitle={`${driver?.name || "Driver"} · ${shift?.label || ""}${shift ? ` (${shift.start} - ${shift.end})` : ""}`}
         breadcrumbs={[
           { label: "Dashboard", href: "/driver" },
           { label: "Driver Dashboard" },
@@ -128,12 +179,14 @@ function DriverDashboard() {
         <Card>
           <SectionHeader title="Assigned Vehicle" />
           <div className="space-y-4">
-            <DetailRow icon={Bus} label="Vehicle Number" value="TN-01-AB-1234" />
-            <DetailRow icon={Route} label="Route" value="Route 42 - Central Market \u2192 Bus Stand" />
-            <DetailRow icon={Navigation} label="Registration Number" value="TN-01-AB-1234" />
+            <DetailRow icon={Users} label="Driver" value={driver?.name || "—"} />
+            <DetailRow icon={Clock} label="Current Shift" value={shift ? `${shift.label} (${shift.start} - ${shift.end})` : "—"} />
+            <DetailRow icon={Bus} label="Vehicle Number" value={vehicle?.vehicleNumber || "—"} />
+            <DetailRow icon={Route} label="Route" value={`${route?.routeNumber || "—"} · ${route?.routeName || ""} - ${route?.source || ""} \u2192 ${route?.destination || ""}`} />
+            <DetailRow icon={Navigation} label="Registration Number" value={vehicle?.vehicleNumber || "—"} />
             <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
               <span className="text-sm font-medium text-emerald-700">Current Status</span>
-              <StatusBadge status="Active" />
+              <StatusBadge status={displayVehicleStatus} />
             </div>
           </div>
         </Card>
@@ -141,12 +194,16 @@ function DriverDashboard() {
         <Card>
           <SectionHeader title="Current Trip" />
           <div className="space-y-4">
-            <DetailRow icon={MapPin} label="Source" value="Central Market" />
-            <DetailRow icon={Navigation} label="Destination" value="Bus Stand" />
-            <DetailRow icon={MapPin} label="Next Stop" value="Gandhi Nagar" />
+            <DetailRow icon={MapPin} label="Source" value={route?.source || "—"} />
+            <DetailRow icon={Navigation} label="Destination" value={route?.destination || "—"} />
+            <DetailRow icon={MapPin} label="Next Stop" value={nextStop} />
+            <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
+              <span className="text-sm font-medium text-emerald-700">Trip Status</span>
+              <StatusBadge status={getTripStatusLabel(tripState.status)} />
+            </div>
             <div className="flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3">
               <span className="text-sm font-medium text-blue-700">Remaining Stops</span>
-              <span className="text-lg font-bold text-blue-700">3</span>
+              <span className="text-lg font-bold text-blue-700">{remainingStops}</span>
             </div>
           </div>
         </Card>
@@ -154,17 +211,26 @@ function DriverDashboard() {
 
       <Card className="mb-8">
         <SectionHeader title="Trip Controls" />
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-gray-50 px-4 py-3">
+          <span className="text-sm font-medium text-gray-700">Trip Status</span>
+          <StatusBadge status={getTripStatusLabel(tripState.status)} />
+          {tripState.startedAt && (
+            <span className="ml-auto text-xs font-medium text-gray-500">
+              Started {new Date(tripState.startedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} · {formatElapsed(tripState)}
+            </span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" size="lg" icon={PlayCircle}>
+          <Button variant="primary" size="lg" icon={PlayCircle} disabled={isTripActive} onClick={startTrip}>
             Start Trip
           </Button>
-          <Button variant="outline" size="lg" icon={PauseCircle}>
+          <Button variant="outline" size="lg" icon={PauseCircle} disabled={tripState.status !== "in_progress"} onClick={pauseTrip}>
             Pause Trip
           </Button>
-          <Button variant="secondary" size="lg" icon={RotateCcw}>
+          <Button variant="secondary" size="lg" icon={RotateCcw} disabled={tripState.status !== "paused"} onClick={resumeTrip}>
             Resume Trip
           </Button>
-          <Button variant="outline" size="lg" icon={StopCircle}>
+          <Button variant="outline" size="lg" icon={StopCircle} disabled={!isTripActive} onClick={endTrip}>
             End Trip
           </Button>
         </div>
@@ -186,9 +252,9 @@ function DriverDashboard() {
                 Connected
               </span>
             </div>
-            <DetailRow icon={Gauge} label="Current Speed" value="32 km/h" />
-            <DetailRow icon={Clock} label="Delay Status" value="On Time" />
-            <DetailRow icon={CheckCircle} label="Last Updated" value="2 min ago" />
+            <DetailRow icon={Gauge} label="Current Speed" value={`${currentSpeed} km/h`} />
+            <DetailRow icon={Clock} label="Delay Status" value={delayStatus} />
+            <DetailRow icon={CheckCircle} label="Last Updated" value={lastUpdated} />
           </div>
         </Card>
 

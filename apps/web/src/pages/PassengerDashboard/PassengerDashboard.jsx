@@ -34,25 +34,11 @@ import useLiveVehicles from "../../hooks/useLiveVehicles";
 import { getAllBusStops } from "../../services/transport/stopService";
 import { calculateDistance } from "../../utils/location/distance";
 import MapView from "../../components/maps/MapView";
-
-const favouriteRoutes = [
-  { name: "Home → Office", from: "Gandhi Nagar", to: "Tech Park", frequency: "Daily" },
-  { name: "Office → Home", from: "Tech Park", to: "Gandhi Nagar", frequency: "Daily" },
-  { name: "Home → Market", from: "Gandhi Nagar", to: "City Market", frequency: "Weekends" },
-];
-
-const recentTrips = [
-  { from: "Bus Stand", to: "Gandhi Nagar", date: "Today, 8:30 AM", route: "Route 42" },
-  { from: "Tech Park", to: "Bus Stand", date: "Today, 6:15 PM", route: "Route 15" },
-  { from: "City Market", to: "Gandhi Nagar", date: "Yesterday, 10:00 AM", route: "Route 7" },
-  { from: "Railway Stn", to: "Tech Park", date: "Yesterday, 7:45 AM", route: "Route 21" },
-];
-
-const notifications = [
-  { title: "Route 42 is on schedule", description: "Your bus will arrive at Gandhi Nagar stop in 2 minutes.", time: "Just now", type: "info" },
-  { title: "Delay on Route 7", description: "Route 7 is delayed by approximately 8 minutes due to traffic.", time: "15 min ago", type: "warning" },
-  { title: "Route 15 occupancy alert", description: "Bus on Route 15 is at 85% capacity. Consider the next bus.", time: "1 hour ago", type: "alert" },
-];
+import {
+  getFavouriteRoutes,
+  getRecentTrips,
+  getPassengerNotifications,
+} from "../../services/mock/passengerService";
 
 const occBarColors = {
   high: "bg-red-500",
@@ -548,6 +534,17 @@ function PassengerDashboard() {
     setDestination(source);
   };
 
+  const mockData = useMemo(
+    () => ({
+      favouriteRoutes: getFavouriteRoutes(),
+      recentTrips: getRecentTrips(),
+      notifications: getPassengerNotifications(),
+    }),
+    []
+  );
+
+  const savedRoutesCount = mockData.favouriteRoutes.length;
+
   const activeRoutesCount = useMemo(() => {
     const unique = new Set(vehicles.map((v) => v.routeId));
     return unique.size;
@@ -580,8 +577,8 @@ function PassengerDashboard() {
     { icon: Bus, label: "Nearby Vehicles", value: String(vehicles.length), trend: "Live", trendUp: true, gradient: "from-blue-500 to-blue-600" },
     { icon: Route, label: "Active Routes", value: String(activeRoutesCount), trend: "Live", trendUp: true, gradient: "from-emerald-500 to-emerald-600" },
     { icon: Clock, label: "Average ETA", value: nearestVehicle ? `${Math.max(1, Math.round(nearestVehicle._dist / (nearestVehicle.speed * 1000 / 60)))} min` : "—", trend: "Live", trendUp: true, gradient: "from-violet-500 to-violet-600" },
-    { icon: Bookmark, label: "Saved Routes", value: "6", trend: "0", trendUp: true, gradient: "from-amber-500 to-amber-600" },
-  ], [vehicles.length, activeRoutesCount, nearestVehicle]);
+    { icon: Bookmark, label: "Saved Routes", value: String(savedRoutesCount), trend: "0", trendUp: true, gradient: "from-amber-500 to-amber-600" },
+  ], [vehicles.length, activeRoutesCount, nearestVehicle, savedRoutesCount]);
 
   return (
     <DashboardLayout title="Passenger Dashboard" role="passenger">
@@ -780,7 +777,7 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          {favouriteRoutes.length === 0 ? (
+          {mockData.favouriteRoutes.length === 0 ? (
             <EmptyState
               icon={Star}
               title="No favourite routes"
@@ -788,7 +785,7 @@ function PassengerDashboard() {
             />
           ) : (
             <div className="space-y-3">
-              {favouriteRoutes.map((route, i) => (
+              {mockData.favouriteRoutes.map((route, i) => (
                 <div key={i} className="group rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md sm:p-5">
                   <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm">
@@ -818,7 +815,7 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          {recentTrips.length === 0 ? (
+          {mockData.recentTrips.length === 0 ? (
             <EmptyState
               icon={Navigation2}
               title="No recent trips"
@@ -826,9 +823,9 @@ function PassengerDashboard() {
             />
           ) : (
             <div className="space-y-0">
-              {recentTrips.map((trip, i) => (
+              {mockData.recentTrips.map((trip, i) => (
                 <div key={i} className="relative flex gap-4 pb-6 last:pb-0">
-                  {i < recentTrips.length - 1 && (
+                  {i < mockData.recentTrips.length - 1 && (
                     <div className="absolute left-[17px] top-10 h-full w-0.5 bg-gray-200" />
                   )}
                   <div className="relative flex shrink-0 items-center justify-center">
@@ -861,7 +858,7 @@ function PassengerDashboard() {
               <ChevronRight size={16} />
             </button>
           ))}
-          {notifications.length === 0 ? (
+          {mockData.notifications.length === 0 ? (
             <EmptyState
               icon={Bell}
               title="No notifications"
@@ -869,7 +866,7 @@ function PassengerDashboard() {
             />
           ) : (
             <div className="space-y-3">
-              {notifications.map((notif, i) => {
+              {mockData.notifications.map((notif, i) => {
                 const borderColor = notif.type === "info" ? "border-l-blue-500" : notif.type === "warning" ? "border-l-amber-500" : "border-l-red-500";
                 return (
                   <div key={i} className={`rounded-2xl border border-gray-100 border-l-4 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${borderColor} sm:p-5`}>
