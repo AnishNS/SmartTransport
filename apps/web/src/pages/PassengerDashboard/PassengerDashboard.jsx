@@ -27,6 +27,7 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
+import ReportModal from "../../components/report/ReportModal";
 import usePassengerLocation from "../../hooks/usePassengerLocation";
 import useNearbyBusStops from "../../hooks/useNearbyBusStops";
 import useNearbyRoutes from "../../hooks/useNearbyRoutes";
@@ -524,6 +525,7 @@ function LiveEtaCard({ nearestVehicle }) {
 function PassengerDashboard() {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
   const { vehicles, loading: vehiclesLoading } = useLiveVehicles();
   const { latitude, longitude, accuracy, address, city, loading: geoLoading, error: geoError } = usePassengerLocation();
   const { busStops: nearbyStops, nearestStop, loading: stopsLoading, error: stopsError } = useNearbyBusStops(latitude, longitude);
@@ -910,7 +912,10 @@ function PassengerDashboard() {
             <span className="text-sm font-bold text-gray-900">View Map</span>
             <span className="text-xs text-gray-500">Explore the transit map</span>
           </button>
-          <button className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-lg">
+          <button
+            onClick={() => setReportOpen(true)}
+            className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-red-200 hover:shadow-lg"
+          >
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 to-red-600 text-white shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:shadow-md">
               <AlertTriangle size={24} />
             </div>
@@ -919,6 +924,13 @@ function PassengerDashboard() {
           </button>
         </div>
       </div>
+
+      {reportOpen && (
+        <ReportModal
+          title="Report Issue"
+          onClose={() => setReportOpen(false)}
+        />
+      )}
     </DashboardLayout>
   );
 }

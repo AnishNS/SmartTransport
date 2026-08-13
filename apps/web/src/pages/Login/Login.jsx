@@ -61,7 +61,7 @@ function Login() {
     return newErrors;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const validationErrors = validate();
     setErrors(validationErrors);
@@ -69,17 +69,15 @@ function Login() {
 
     setLoading(true);
     setFormError("");
-    setTimeout(() => {
-      const result = authService.loginUser({ email, password, role });
-      setLoading(false);
+    const result = await authService.loginUser({ email, password, role });
+    setLoading(false);
 
-      if (!result.success) {
-        setFormError(result.error);
-        return;
-      }
+    if (!result.success) {
+      setFormError(result.error);
+      return;
+    }
 
-      navigate(authService.roleHomePath[result.user.role] || `/${result.user.role}`);
-    }, 1200);
+    navigate(authService.roleHomePath[result.user.role] || `/${result.user.role}`);
   };
 
   return (

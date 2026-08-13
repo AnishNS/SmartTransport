@@ -22,6 +22,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import EmptyState from "../../components/ui/EmptyState";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
+import ReportModal from "../../components/report/ReportModal";
 import usePassengerLocation from "../../hooks/usePassengerLocation";
 import { recommendBestRoute, findNearestStop, findDestinationStops } from "../../services/transport/routeRecommendationService";
 import { calculateDistance } from "../../utils/location/distance";
@@ -63,6 +64,7 @@ function StatCard({ icon: Icon, label, value, gradient }) {
 function RoutePlanner() {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
   const { latitude, longitude, loading: locationLoading } = usePassengerLocation();
   const userLocation = useMemo(
     () => (latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null),
@@ -464,6 +466,9 @@ function RoutePlanner() {
                 {quickActions.map((action, i) => (
                   <button
                     key={i}
+                    onClick={() => {
+                      if (action.label === "Report an Issue") setReportOpen(true);
+                    }}
                     className={`group flex flex-col items-center gap-2 rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${action.hoverBorder}`}
                   >
                     <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${action.gradient} text-white shadow-sm transition-transform duration-200 group-hover:scale-110`}>
@@ -477,6 +482,13 @@ function RoutePlanner() {
           </div>
         </div>
       </div>
+
+      {reportOpen && (
+        <ReportModal
+          title="Report Issue"
+          onClose={() => setReportOpen(false)}
+        />
+      )}
     </DashboardLayout>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bus, Menu, X } from "lucide-react";
+import { Bus, Menu, X, Sun, Moon } from "lucide-react";
+import { useTheme } from "../../context/ThemeContext";
 
 const navLinks = [
   { label: "Home", href: "#home" },
@@ -13,6 +14,7 @@ function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -101,17 +103,32 @@ function Navbar() {
           </div>
         </div>
 
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className={`relative z-50 rounded-xl p-2.5 transition-all duration-300 md:hidden ${
-            scrolled
-              ? "text-gray-700 hover:bg-gray-100"
-              : "text-white hover:bg-white/10"
-          }`}
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleTheme}
+            className={`rounded-xl p-2.5 transition-all duration-300 ${
+              scrolled
+                ? "text-gray-700 hover:bg-gray-100"
+                : "text-white/80 hover:bg-white/10 hover:text-white"
+            }`}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className={`relative z-50 rounded-xl p-2.5 transition-all duration-300 md:hidden ${
+              scrolled
+                ? "text-gray-700 hover:bg-gray-100"
+                : "text-white hover:bg-white/10"
+            }`}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       <div

@@ -5,6 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SmartTransport - Smart Public Transport Tracking</title>
+    <script>
+      // Restore the persisted theme before React mounts so the page never
+      // flashes the wrong color scheme. Kept in sync with ThemeContext.
+      (function () {
+        try {
+          var theme = localStorage.getItem("smarttransport:theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme =
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          }
+          if (theme === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

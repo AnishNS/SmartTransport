@@ -26,11 +26,11 @@ import Button from "../../components/ui/Button";
 import { getPassengerProfile } from "../../services/mock/passengerService";
 import {
   getCurrentDriver,
-  getAssignedVehicle,
   getAssignedRoute,
 } from "../../services/mock/driverService";
 import { getAdminProfile } from "../../services/mock/adminService";
-import { authService } from "../../services/auth";
+import { useAuth } from "../../context/AuthContext";
+import useDriverProfile from "../../hooks/useDriverProfile";
 
 const dashboardPaths = { passenger: "/passenger", driver: "/driver", admin: "/admin" };
 
@@ -54,24 +54,25 @@ const roleConfig = {
 
 // Identity (name, email, phone, role) is always read from the authenticated
 // session so the profile reflects the account that actually logged in.
-// Driver/admin operational details (vehicle, route, shift, department, region)
-// still come from the demo data layer until backend management exists.
-function getProfile(role, user) {
+// Driver operational details (license, assigned vehicle, availability) come
+// from the real drivers table via useDriverProfile; route/shift still come
+// from the demo data layer until route assignment exists in the backend.
+function getProfile(role, user, driverProfile) {
   if (role === "driver") {
-    const driver = getCurrentDriver();
-    const vehicle = getAssignedVehicle(driver?.id);
-    const route = getAssignedRoute(driver?.id);
+    const demoDriver = getCurrentDriver();
+    const route = getAssignedRoute(demoDriver?.id);
+    const vehicle = driverProfile?.vehicle;
     return {
-      name: user?.name || driver?.name || "Driver",
-      email: user?.email || "driver@smarttransport.com",
+      name: user?.name || "Driver",
+      email: user?.email || "—",
       role: "Driver",
       details: [
-        { icon: User, label: "Employee Code", value: driver?.employeeCode || "—" },
-        { icon: Phone, label: "Contact", value: user?.phone || driver?.contact || "—" },
-        { icon: Bus, label: "Assigned Vehicle", value: vehicle?.vehicleNumber || "—" },
+        { icon: Shield, label: "License Number", value: driverProfile?.driver?.license_number || "—" },
+        { icon: Phone, label: "Contact", value: user?.phone || "—" },
+        { icon: Bus, label: "Assigned Vehicle", value: vehicle?.vehicle_number || "Not assigned" },
+        { icon: Navigation, label: "Availability", value: driverProfile?.driver?.availability_status === "available" ? "Available" : "Unavailable" },
         { icon: Route, label: "Assigned Route", value: route ? `Route ${route.routeNumber}` : "—" },
-        { icon: Clock, label: "Shift", value: driver?.shift ? `${driver.shift.label} (${driver.shift.start} – ${driver.shift.end})` : "—" },
-        { icon: Shield, label: "License Number", value: driver?.licenseNumber || "—" },
+        { icon: Clock, label: "Shift", value: demoDriver?.shift ? `${demoDriver.shift.label} (${demoDriver.shift.start} – ${demoDriver.shift.end})` : "—" },
       ],
     };
   }
@@ -115,8 +116,9 @@ const defaultSettings = {
 
 function Profile({ role = "passenger" }) {
   const navigate = useNavigate();
-  const user = authService.getCurrentUser();
-  const profile = getProfile(role, user);
+  const { user, logout: signOut } = useAuth();
+  const driverProfile = useDriverProfile({ enabled: role === "driver" });
+  const profile = getProfile(role, user, driverProfile);
   const config = roleConfig[role] || roleConfig.passenger;
   const [settings, setSettings] = useState(defaultSettings);
 
@@ -124,8 +126,8 @@ function Profile({ role = "passenger" }) {
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const logout = () => {
-    authService.logoutUser();
+  const logout = async () => {
+    await signOut();
     navigate("/login");
   };
 

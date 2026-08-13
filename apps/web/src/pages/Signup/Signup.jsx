@@ -51,6 +51,7 @@ function Signup() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
 
   const updateField = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -92,29 +93,29 @@ function Signup() {
     return nextErrors;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const validationErrors = validate();
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
 
     setLoading(true);
+    setNeedsEmailConfirmation(false);
+    const result = await authService.registerPassenger(form);
+    setLoading(false);
+
+    if (!result.success) {
+      setErrors({ email: result.error });
+      return;
+    }
+
+    setSuccess(true);
+    setNeedsEmailConfirmation(Boolean(result.needsEmailConfirmation));
     setTimeout(() => {
-      const result = authService.registerPassenger(form);
-      setLoading(false);
-
-      if (!result.success) {
-        setErrors({ email: result.error });
-        return;
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        navigate("/login", {
-          state: { signupSuccess: true, email: result.user.email },
-        });
-      }, 1800);
-    }, 1000);
+      navigate("/login", {
+        state: { signupSuccess: true, email: result.user.email },
+      });
+    }, 1800);
   };
 
   return (
@@ -251,7 +252,11 @@ function Signup() {
                   <p className="text-sm font-semibold text-emerald-800">
                     Account created successfully.
                   </p>
-                  <p className="mt-0.5 text-xs text-emerald-700">Please login.</p>
+                  <p className="mt-0.5 text-xs text-emerald-700">
+                    {needsEmailConfirmation
+                      ? "Please check your email and confirm your account before logging in."
+                      : "Please login."}
+                  </p>
                 </div>
               </div>
             )}

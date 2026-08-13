@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import { authService } from "../services/auth";
+import { useAuth } from "../context/AuthContext";
 
 import Landing from "../pages/Landing/Landing";
 import Login from "../pages/Login/Login";
@@ -24,7 +25,18 @@ import AdminDrivers from "../pages/AdminDrivers/AdminDrivers";
 // signed-in users are sent to their own dashboard. The destination is always
 // derived from the authenticated user's actual role, never from the URL.
 function ProtectedRoute({ roles, children }) {
-  const user = authService.getCurrentUser();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="flex items-center gap-3 text-sm font-medium text-gray-500">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+          Loading...
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -40,7 +52,8 @@ function ProtectedRoute({ roles, children }) {
 // Role-aware fallback for unknown URLs: signed-in users go to their dashboard,
 // everyone else lands on the public home page.
 function FallbackRoute() {
-  const user = authService.getCurrentUser();
+  const { user, loading } = useAuth();
+  if (loading) return null;
   if (!user) {
     return <Navigate to="/" replace />;
   }
