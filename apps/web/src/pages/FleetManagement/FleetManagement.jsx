@@ -92,6 +92,7 @@ const emptyForm = {
   vehicleType: "",
   capacity: "",
   status: "active",
+  routeId: "",
 };
 
 function validateForm(form, isEdit) {
@@ -102,11 +103,16 @@ function validateForm(form, isEdit) {
   if (form.capacity !== "" && (Number(form.capacity) < 1 || !Number.isFinite(Number(form.capacity)))) {
     errors.capacity = "Capacity must be a positive number";
   }
+  if (!form.routeId) {
+    errors.routeId = "Please select the route this vehicle operates";
+  }
   return errors;
 }
 
-// Add / edit vehicle modal.
-function VehicleModal({ vehicle, isEdit, onClose, onSaved }) {
+// Add / edit vehicle modal. `routes` comes from the backend (public.routes) so
+// the dropdown is always populated from the canonical route dataset — never a
+// hardcoded list.
+function VehicleModal({ vehicle, isEdit, routes = [], onClose, onSaved }) {
   const [form, setForm] = useState(
     isEdit && vehicle
       ? {
@@ -114,6 +120,7 @@ function VehicleModal({ vehicle, isEdit, onClose, onSaved }) {
           vehicleType: vehicle.vehicle_type || "",
           capacity: vehicle.capacity == null ? "" : String(vehicle.capacity),
           status: vehicle.status || "active",
+          routeId: vehicle.route?.id || "",
         }
       : emptyForm
   );
@@ -137,6 +144,7 @@ function VehicleModal({ vehicle, isEdit, onClose, onSaved }) {
     const payload = {
       vehicleType: form.vehicleType,
       capacity: form.capacity === "" ? null : Number(form.capacity),
+      routeId: form.routeId,
     };
     if (!isEdit) payload.vehicleNumber = form.vehicleNumber;
     if (isEdit) payload.status = form.status;
@@ -231,6 +239,25 @@ function VehicleModal({ vehicle, isEdit, onClose, onSaved }) {
 
           <div className="group">
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Assigned Route <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={form.routeId}
+              onChange={handleChange("routeId")}
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            >
+              <option value="">Select a route...</option>
+              {routes.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.route_code || route.route_number || "Route"} · {route.route_name} ({route.source} → {route.destination})
+                </option>
+              ))}
+            </select>
+            {errors.routeId && <p className="mt-1 text-xs text-red-500">{errors.routeId}</p>}
+          </div>
+
+          <div className="group">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Status
             </label>
             <select
@@ -320,6 +347,7 @@ function ConfirmDialog({ title, message, confirmLabel, busy, error, onCancel, on
 
 function FleetManagement() {
   const [vehicles, setVehicles] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -347,6 +375,18 @@ function FleetManagement() {
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    adminService
+      .listRoutes()
+      .then((data) => {
+        if (active) setRoutes(data);
+      })
+      .catch(() => {
+        // Routes failing (e.g. migration not applied yet) must not block the
+        // fleet table; the dropdown will just show "Select a route...".
+        if (active) setRoutes([]);
+      });
+
     return () => {
       active = false;
     };
@@ -511,6 +551,7 @@ function FleetManagement() {
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Vehicle Number</th>
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Type</th>
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Capacity</th>
+                  <th className="pb-3 pr-4 font-semibold text-gray-600">Route</th>
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Status</th>
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Availability</th>
                   <th className="pb-3 pr-4 font-semibold text-gray-600">Assigned Driver</th>
@@ -532,6 +573,18 @@ function FleetManagement() {
                       </td>
                       <td className="py-3 pr-4 text-gray-700">{vehicle.vehicle_type || "—"}</td>
                       <td className="py-3 pr-4 text-gray-700">{vehicle.capacity != null ? `${vehicle.capacity} seats` : "—"}</td>
+                      <td className="py-3 pr-4">
+                        {vehicle.route ? (
+                          <div className="flex flex-col items-start">
+                            <span className="font-medium text-gray-900">
+                              {vehicle.route.route_code || vehicle.route.route_number || "Route"}
+                            </span>
+                            <span className="text-xs text-gray-500">{vehicle.route.route_name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">No route</span>
+                        )}
+                      </td>
                       <td className="py-3 pr-4">
                         <RawStatusBadge status={vehicle.status} />
                       </td>
@@ -594,6 +647,7 @@ function FleetManagement() {
         <VehicleModal
           vehicle={editTarget}
           isEdit={Boolean(editTarget)}
+          routes={routes}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
           onSaved={loadVehicles}
         />

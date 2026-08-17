@@ -40,13 +40,21 @@ export async function listVehicles({ available = false } = {}) {
   return vehicles || [];
 }
 
+// Lists every route in the network (backend public.routes). The Admin fleet UI
+// populates its vehicle-route dropdown from here so vehicles always reference
+// actual routes — never hardcoded names.
+export async function listRoutes() {
+  const { routes } = await apiRequest("get", "/api/admin/routes");
+  return routes || [];
+}
+
 // Adds a vehicle to the fleet. `payload` contains the admin-entered fields:
-//   { vehicleNumber, vehicleType, capacity, status }
+//   { vehicleNumber, vehicleType, capacity, status, routeId }
 export async function createVehicle(payload) {
   return apiRequest("post", "/api/admin/drivers/vehicles", payload);
 }
 
-// Updates editable fleet fields (vehicleType, capacity, status).
+// Updates editable fleet fields (vehicleType, capacity, status, routeId).
 export async function updateVehicle(vehicleId, payload) {
   return apiRequest(
     "patch",

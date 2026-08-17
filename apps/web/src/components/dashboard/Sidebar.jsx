@@ -56,7 +56,7 @@ function Sidebar({ collapsed, onToggle, role = "passenger", mobileOpen, onMobile
       )}
 
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-full flex-col border-r border-slate-800 bg-slate-900 transition-all duration-300 ease-in-out ${
+        className={`fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-slate-800 bg-slate-900 transition-all duration-300 ease-in-out ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0 ${collapsed ? "lg:w-20" : "lg:w-64"}`}
       >

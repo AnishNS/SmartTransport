@@ -229,6 +229,11 @@ function AssignVehicleModal({ driver, onClose, onAssigned }) {
                   <p className="text-xs text-gray-500">
                     {driver.vehicle.vehicle_type || "Vehicle"} · {driver.vehicle.capacity ? `${driver.vehicle.capacity} seats` : ""}
                   </p>
+                  {driver.vehicle.routes && (
+                    <p className="mt-0.5 text-xs font-medium text-blue-600">
+                      {(driver.vehicle.routes.route_code || "Route") + " · " + driver.vehicle.routes.route_name}
+                    </p>
+                  )}
                 </div>
               </div>
               <Button variant="outline" size="sm" icon={Unlink} loading={assigning} onClick={handleUnassign}>
@@ -267,7 +272,7 @@ function AssignVehicleModal({ driver, onClose, onAssigned }) {
               </option>
               {vehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.vehicle_number}{vehicle.vehicle_type ? ` · ${vehicle.vehicle_type}` : ""}
+                  {vehicle.vehicle_number}{vehicle.vehicle_type ? ` · ${vehicle.vehicle_type}` : ""}{vehicle.route ? ` · ${vehicle.route.route_code || "Route"}: ${vehicle.route.route_name}` : " · No route"}
                 </option>
               ))}
             </select>
@@ -702,10 +707,17 @@ function AdminDrivers() {
                       <td className="py-3 pr-4 text-gray-700">{driver.license_number || "—"}</td>
                       <td className="py-3 pr-4">
                         {driver.vehicle ? (
-                          <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
-                            <Car size={13} className="text-gray-400" />
-                            {driver.vehicle.vehicle_number}
-                          </span>
+                          <div className="flex flex-col items-start">
+                            <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
+                              <Car size={13} className="text-gray-400" />
+                              {driver.vehicle.vehicle_number}
+                            </span>
+                            {driver.vehicle.routes && (
+                              <span className="mt-0.5 text-xs font-medium text-blue-600">
+                                {driver.vehicle.routes.route_code || "Route"} · {driver.vehicle.routes.route_name}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-gray-400">Not assigned</span>
                         )}

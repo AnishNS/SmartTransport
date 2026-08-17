@@ -8,27 +8,46 @@ export default function useNearbyRoutes(latitude, longitude, nearbyBusStops) {
   const lastKey = useRef("");
 
   useEffect(() => {
-    if (latitude == null || longitude == null || !nearbyBusStops || nearbyBusStops.length === 0) {
-      setRoutes([]);
-      setLoading(false);
-      return;
-    }
+    const hasStops =
+      latitude != null &&
+      longitude != null &&
+      Array.isArray(nearbyBusStops) &&
+      nearbyBusStops.length > 0;
 
-    const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}-${nearbyBusStops.length}`;
+    const key = hasStops
+      ? `${Number(latitude).toFixed(4)},${Number(longitude).toFixed(4)}-${nearbyBusStops.length}`
+      : "";
     if (key === lastKey.current) return;
     lastKey.current = key;
 
-    setLoading(true);
-    setError(null);
+    // Defer state writes to a microtask so the effect body never calls setState
+    // synchronously; React auto-batches them so the UI never flashes an empty
+    // routes list between "no stops" and "routes available".
+    Promise.resolve().then(() => {
+      if (key !== lastKey.current) return;
 
-    try {
-      const matched = matchRoutesToStops(latitude, longitude, nearbyBusStops);
-      setRoutes(matched);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+      if (!hasStops) {
+        setRoutes([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const matched = matchRoutesToStops(
+          Number(latitude),
+          Number(longitude),
+          nearbyBusStops
+        );
+        setRoutes(matched);
+      } catch (err) {
+        setError(err.message || "Unable to load nearby routes.");
+      } finally {
+        setLoading(false);
+      }
+    });
   }, [latitude, longitude, nearbyBusStops]);
 
   return { routes, loading, error };

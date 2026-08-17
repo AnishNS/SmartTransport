@@ -8,6 +8,7 @@ const OVERPASS_ENDPOINTS = [
 const TIMEOUT_MS = 15000;
 const CACHE_PREFIX = "nearby_bus_stops";
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const EMPTY_CACHE_TTL_MS = 2 * 60 * 1000;
 
 function getCacheKey(latitude, longitude, radius) {
   const lat = latitude.toFixed(4);
@@ -15,25 +16,30 @@ function getCacheKey(latitude, longitude, radius) {
   return `${CACHE_PREFIX}_${lat}_${lng}_${radius}`;
 }
 
+function setCachedData(key, data, ttlMs = CACHE_TTL_MS) {
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ data, timestamp: Date.now(), ttlMs })
+    );
+  } catch {
+    // Caching is best-effort; storage may be unavailable (private mode).
+  }
+}
+
 function getCachedData(key) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const entry = JSON.parse(raw);
-    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    const ttl = entry.ttlMs || CACHE_TTL_MS;
+    if (Date.now() - entry.timestamp > ttl) {
       localStorage.removeItem(key);
       return null;
     }
     return entry.data;
   } catch {
     return null;
-  }
-}
-
-function setCachedData(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-  } catch {
   }
 }
 
@@ -54,6 +60,7 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
   `;
 
   let lastError;
+  let sawEmpty = false;
 
   for (const url of OVERPASS_ENDPOINTS) {
     const controller = new AbortController();
@@ -77,8 +84,10 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
       const elements = data?.elements || [];
 
       if (elements.length === 0) {
-        setCachedData(cacheKey, []);
-        return [];
+        // A single server reporting "no stops" is not trustworthy: try the
+        // next endpoint before concluding the area really has none.
+        sawEmpty = true;
+        continue;
       }
 
       const stops = elements
@@ -95,6 +104,7 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
             latitude: stopLat,
             longitude: stopLng,
             distance: Math.round(distance),
+            source: "osm",
             tags: el.tags || {},
           };
         })
@@ -110,6 +120,14 @@ export async function fetchNearbyBusStops(latitude, longitude, radius = 1000) {
         continue;
       }
     }
+  }
+
+  // Every endpoint either errored or returned an empty element set.
+  if (sawEmpty) {
+    // Cache "empty" only briefly so a transient hiccup never hides real stops
+    // behind the normal 15-minute cache, yet repeated renders are still cheap.
+    setCachedData(cacheKey, [], EMPTY_CACHE_TTL_MS);
+    return [];
   }
 
   const fallback = getCachedData(cacheKey);

@@ -10,5 +10,8 @@ const driverController = require("../controllers/driverController");
 router.use(requireAuth);
 
 router.get("/profile", driverController.profile);
+router.get("/trips/current", driverController.currentTrip);
+router.post("/trips", driverController.startTrip);
+router.patch("/trips/:tripId/end", driverController.endTrip);
 
 module.exports = router;

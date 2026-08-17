@@ -1,16 +1,19 @@
 // API client for the Node/Express backend.
 //
-// Talks to the backend (default http://localhost:5000). Admin-only operations
-// (driver management) require the caller's Supabase access token, which is
-// attached as an Authorization: Bearer header on every request. The token is
-// fetched from the live Supabase session — the service_role key never touches
-// the browser.
+// Talks to the backend through the same origin the page is served from. In the
+// Vite dev server the /api prefix is proxied to the backend (see vite.config.js),
+// so this works from any device on the LAN without baking a hostname into the
+// bundle. Set VITE_API_URL to an absolute URL when an override is needed (e.g.
+// a tunnel or a separately hosted API). Admin-only operations (driver
+// management) require the caller's Supabase access token, which is attached as
+// an Authorization: Bearer header on every request. The token is fetched from
+// the live Supabase session — the service_role key never touches the browser.
 
 import axios from "axios";
 import supabase from "../../config/supabaseClient";
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000";
+// Empty string = same origin (proxied /api in dev, served by the API in prod).
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 const client = axios.create({
   baseURL: API_BASE_URL,

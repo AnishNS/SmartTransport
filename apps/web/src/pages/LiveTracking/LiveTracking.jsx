@@ -15,6 +15,7 @@ import {
   FilterX,
   Loader2,
   AlertCircle,
+  MapPin,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -26,10 +27,11 @@ import { DEFAULT_CENTER, DEFAULT_ZOOM, TILE_URL, TILE_ATTRIBUTION } from "../../
 import usePassengerLocation from "../../hooks/usePassengerLocation";
 import useNearbyBusStops from "../../hooks/useNearbyBusStops";
 import useLiveVehicles from "../../hooks/useLiveVehicles";
+import { getAllBusStops } from "../../services/transport/stopService";
 import { getRouteById } from "../../services/transport/routeService";
 
 const sectionHeader = (title, action) => (
-  <div className="mb-4 flex items-center justify-between">
+  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
     <div className="flex items-center gap-3">
       <div className="h-6 w-1 rounded-full bg-gradient-to-b from-blue-500 to-blue-600" />
       <h2 className="text-lg font-bold tracking-tight text-gray-900">{title}</h2>
@@ -82,7 +84,11 @@ function ChangeView({ center, zoom }) {
 }
 
 function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, userLongitude }) {
-  const { busStops, nearestStop, loading: stopsLoading, error: stopsError, retry: retryStops } = useNearbyBusStops(userLatitude, userLongitude);
+  const { busStops, nearestStop, loading: stopsLoading, error: stopsError, retry: retryStops, enhancing } = useNearbyBusStops(userLatitude, userLongitude);
+
+  // ALL bus stops from the canonical dataset are rendered on the map so the
+  // network is always consistent. The nearby list is a separate derived view.
+  const allStops = useMemo(() => getAllBusStops(), []);
 
   const center = userLatitude != null && userLongitude != null
     ? [userLatitude, userLongitude]
@@ -91,7 +97,8 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
   const selectedVehicle = vehicles.find((v) => v.id === selectedId);
 
   return (
-    <div className="relative h-[400px] min-h-[400px] overflow-hidden rounded-2xl border border-gray-100 shadow-sm lg:h-[calc(100vh-300px)]">
+    <>
+      <div className="relative h-[400px] min-h-[400px] overflow-hidden rounded-2xl border border-gray-100 shadow-sm lg:h-[calc(100vh-300px)]">
       <MapContainer
         center={center}
         zoom={DEFAULT_ZOOM}
@@ -103,7 +110,7 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
 
         {userLatitude != null && (
           <Marker position={[userLatitude, userLongitude]} icon={userLocationIcon}>
-            <Popup>
+            <Popup maxWidth={220}>
               <div className="min-w-[120px]">
                 <p className="font-semibold text-gray-900">Your Location</p>
               </div>
@@ -111,16 +118,16 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
           </Marker>
         )}
 
-        {busStops.map((stop) => (
+        {allStops.map((stop) => (
           <Marker
             key={stop.id}
             position={[stop.latitude, stop.longitude]}
             icon={busStopIcon}
           >
-            <Popup>
+            <Popup maxWidth={220}>
               <div className="min-w-[140px] space-y-1">
                 <p className="font-semibold text-gray-900">{stop.name}</p>
-                <p className="text-sm text-gray-600">{stop.distance}m away</p>
+                <p className="text-sm text-gray-600">{stop.id}</p>
                 <p className="text-xs text-gray-400">
                   {stop.latitude.toFixed(5)}, {stop.longitude.toFixed(5)}
                 </p>
@@ -136,7 +143,7 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
             icon={vehicle.id === selectedId ? selectedVehicleIcon : vehicleIcon}
             eventHandlers={{ click: () => onSelectVehicle(vehicle.id) }}
           >
-            <Popup>
+            <Popup maxWidth={280}>
               <div className="min-w-[180px] space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold text-gray-900">{vehicle.vehicleNumber}</p>
@@ -176,15 +183,15 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
       </MapContainer>
 
       {stopsLoading && (
-        <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+        <div className="absolute left-3 top-20 z-[1000] flex flex-wrap items-center gap-2 rounded-lg bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
           <Loader2 size={14} className="animate-spin text-blue-500" />
-          <span className="text-xs font-medium text-gray-600">Searching nearby bus stops...</span>
+          <span className="text-xs font-medium text-gray-600">Updating nearby bus stops...</span>
         </div>
       )}
 
       {stopsError && (
-        <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2 rounded-lg bg-red-50/90 px-3 py-2 shadow-sm backdrop-blur-sm">
-          <AlertCircle size={14} className="text-red-500" />
+        <div className="absolute left-3 top-20 z-[1000] flex max-w-[85%] flex-wrap items-center gap-2 rounded-lg bg-red-50/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+          <AlertCircle size={14} className="shrink-0 text-red-500" />
           <span className="text-xs font-medium text-red-600">Unable to load nearby stops. Using available transport data.</span>
           <button
             onClick={retryStops}
@@ -196,9 +203,13 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
       )}
 
       {!stopsLoading && !stopsError && busStops.length === 0 && (
-        <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2 rounded-lg bg-amber-50/90 px-3 py-2 shadow-sm backdrop-blur-sm">
-          <AlertCircle size={14} className="text-amber-500" />
-          {nearestStop ? (
+        <div className="absolute left-3 top-20 z-[1000] flex max-w-[85%] items-center gap-2 rounded-lg bg-amber-50/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+          <AlertCircle size={14} className="shrink-0 text-amber-500" />
+          {userLatitude == null || userLongitude == null ? (
+            <span className="text-xs font-medium text-amber-700">
+              Enable location access to find nearby stops.
+            </span>
+          ) : nearestStop ? (
             <span className="text-xs font-medium text-amber-700">
               No stops within radius. Nearest stop: {nearestStop.name} · {formatDistance(nearestStop.distance)}
             </span>
@@ -208,7 +219,7 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
         </div>
       )}
 
-      <div className="absolute bottom-3 left-3 z-[1000] flex items-center gap-3 rounded-lg border border-gray-100 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+      <div className="absolute bottom-3 left-3 z-[1000] flex max-w-[92%] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-gray-100 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
         <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
           <span className="flex h-3 w-3 items-center justify-center rounded-full border-2 border-white bg-blue-500 shadow-sm">
             <Bus size={6} className="text-white" />
@@ -218,15 +229,103 @@ function MapPlaceholder({ vehicles, selectedId, onSelectVehicle, userLatitude, u
         {selectedVehicle && (
           <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
             <div className="h-0.5 w-4 bg-blue-400" />
-            <span>{selectedVehicle.routeName}</span>
+            <span className="max-w-[120px] truncate">{selectedVehicle.routeName}</span>
           </div>
         )}
         <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
           <span className="flex h-3 w-3 items-center justify-center rounded-sm bg-emerald-500 text-white text-[7px] font-bold">B</span>
-          <span>{busStops.length} Stops</span>
+          <span>{allStops.length} Stops</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
+          <MapPin size={12} className="text-emerald-500" />
+          <span>{busStops.length} Nearby{enhancing ? "…" : ""}</span>
         </div>
       </div>
-    </div>
+      </div>
+      <NearbyStopsPanel
+        stops={busStops}
+        nearestStop={nearestStop}
+        userLatitude={userLatitude}
+        userLongitude={userLongitude}
+        enhancing={enhancing}
+      />
+    </>
+  );
+}
+
+// Derived "nearby stops" list — the same canonical dataset, filtered to the
+// passenger's radius. Kept separate from the map collection so "all stops" and
+// "nearby stops" never contradict each other.
+function NearbyStopsPanel({ stops, nearestStop, userLatitude, userLongitude, enhancing }) {
+  return (
+    <Card className="mt-6">
+      {sectionHeader(
+        "Nearby Bus Stops",
+        stops.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-600">
+            <MapPin size={12} />
+            {stops.length} within radius
+          </span>
+        ) : null
+      )}
+
+      {enhancing && stops.length > 0 && (
+        <p className="mb-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700">
+          Adding OpenStreetMap stops around your location...
+        </p>
+      )}
+
+      {stops.length === 0 && nearestStop && (
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-700">
+          No stops within the nearby radius. Showing the nearest stop below.
+        </p>
+      )}
+      {stops.length === 0 && !nearestStop && (
+        <p className="text-sm font-medium text-gray-500">
+          {userLatitude == null || userLongitude == null
+            ? "Enable location access to find nearby stops."
+            : "No bus stops found nearby."}
+        </p>
+      )}
+
+      {stops.length > 0 && (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {stops.map((stop) => (
+            <div
+              key={stop.id}
+              className="min-w-[200px] shrink-0 rounded-xl border border-gray-100 bg-gray-50/60 p-4"
+            >
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                  <MapPin size={15} className="text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900">{stop.name}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{stop.id}</p>
+                </div>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-emerald-600">{formatDistance(stop.distance)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {nearestStop && (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            <MapPin size={12} className="text-emerald-500" />
+            Nearest Bus Stop
+          </p>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900">{nearestStop.name}</p>
+              <p className="mt-0.5 text-xs text-gray-500">{nearestStop.id}</p>
+            </div>
+            <p className="shrink-0 text-sm font-bold text-emerald-600">{formatDistance(nearestStop.distance)}</p>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

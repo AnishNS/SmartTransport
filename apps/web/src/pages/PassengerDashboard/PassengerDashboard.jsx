@@ -22,6 +22,7 @@ import {
   Loader2,
   AlertCircle,
   Navigation2,
+  X,
 } from "lucide-react";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import PageHeader from "../../components/common/PageHeader";
@@ -32,6 +33,7 @@ import usePassengerLocation from "../../hooks/usePassengerLocation";
 import useNearbyBusStops from "../../hooks/useNearbyBusStops";
 import useNearbyRoutes from "../../hooks/useNearbyRoutes";
 import useLiveVehicles from "../../hooks/useLiveVehicles";
+import useNearbyBusNotifications from "../../hooks/useNearbyBusNotifications";
 import { getAllBusStops } from "../../services/transport/stopService";
 import { calculateDistance } from "../../utils/location/distance";
 import MapView from "../../components/maps/MapView";
@@ -48,7 +50,7 @@ const occBarColors = {
 };
 
 const sectionHeader = (title, action) => (
-  <div className="mb-5 flex items-center justify-between">
+  <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
     <div className="flex items-center gap-3">
       <div className="h-7 w-1 rounded-full bg-gradient-to-b from-blue-500 to-blue-600" />
       <h2 className="text-xl font-bold tracking-tight text-gray-900">{title}</h2>
@@ -61,6 +63,14 @@ const formatDistance = (meters) => {
   if (meters == null) return "—";
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
   return `${Math.round(meters)} m`;
+};
+
+const formatWalkingTime = (meters) => {
+  if (meters == null) return "—";
+  const minutes = Math.ceil(meters / 83.33);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours > 0 ? `${hours}h ${remainder}m walk` : `${minutes} min walk`;
 };
 
 function StatCard({ icon: Icon, label, value, trend, trendUp, gradient }) {
@@ -220,7 +230,42 @@ function LocationPreview({ latitude, longitude, accuracy, address, city, loading
   );
 }
 
-function NearbyBusStops({ stops, loading, error, nearestStop }) {
+function NearbyBusAlerts({ alerts, onDismiss }) {
+  if (alerts.length === 0) return null;
+  return (
+    <div className="mb-6 space-y-3">
+      {alerts.map((alert) => (
+        <div
+          key={alert.id}
+          className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm animate-fade-in-up"
+        >
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
+            <Bus size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-emerald-900">
+              Bus {alert.vehicleNumber} is nearby
+            </p>
+            <p className="mt-0.5 text-xs text-emerald-700">
+              {alert.routeName} · {alert.distanceLabel} away
+            </p>
+          </div>
+          <button
+            onClick={() => onDismiss(alert.id)}
+            className="rounded-lg p-1 text-emerald-500 transition-colors hover:bg-emerald-100"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NearbyBusStops({ stops, loading, error, nearestStop, enhancing, radius = 1500 }) {
+  const radiusLabel = radius >= 1000 ? `${radius / 1000} km` : `${radius} m`;
+
   if (loading) {
     return (
       <div className="mb-8">
@@ -259,59 +304,45 @@ function NearbyBusStops({ stops, loading, error, nearestStop }) {
     );
   }
 
-  if (!error && stops.length === 0) {
-    return (
-      <div className="mb-8">
-        {sectionHeader("Nearby Bus Stops")}
-        <Card className="border-gray-100 bg-white shadow-sm">
-          <div className="space-y-1.5">
-            <p className="text-sm font-semibold text-gray-900">No stops within radius.</p>
-            {nearestStop ? (
-              <>
-                <p className="text-sm text-gray-500">
-                  Nearest Stop:{" "}
-                  <span className="font-semibold text-gray-800">{nearestStop.name}</span>
-                </p>
-                <p className="text-sm text-gray-500">
-                  Distance:{" "}
-                  <span className="font-semibold text-gray-800">{formatDistance(nearestStop.distance)}</span>
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-gray-500">No bus stops found nearby.</p>
-            )}
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="mb-8">
-      {sectionHeader("Nearby Bus Stops", (
-        <span className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">
-          <MapPin size={12} />
-          {stops.length} stop{stops.length !== 1 ? "s" : ""}
-        </span>
-      ))}
+    <>
+      <div className="mb-8">
+        {sectionHeader("Nearby Bus Stops", (
+          <span className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">
+            <MapPin size={12} />
+            {stops.length} stop{stops.length !== 1 ? "s" : ""}
+          </span>
+        ))}
 
-      {error && (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          <AlertCircle size={16} className="shrink-0 text-amber-500" />
-          <span>Unable to load nearby stops. Using available transport data.</span>
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            <AlertCircle size={16} className="shrink-0 text-amber-500" />
+            <span>Unable to load nearby stops. Using available transport data.</span>
+          </div>
+        )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {stops.slice(0, 9).map((stop) => {
-          const walkingTimeMin = Math.ceil(stop.distance / 83.33);
-          const hours = Math.floor(walkingTimeMin / 60);
-          const minutes = walkingTimeMin % 60;
-          const walkingTime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
+        {enhancing && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800">
+            <Loader2 size={16} className="shrink-0 animate-spin text-blue-500" />
+            <span>Adding OpenStreetMap stops around your location...</span>
+          </div>
+        )}
 
-          return (
-            <div key={stop.id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg sm:p-6">
-              <div className="flex items-start justify-between gap-3">
+        {stops.length === 0 ? (
+          <Card className="border-gray-100 bg-white shadow-sm">
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-gray-900">
+                No bus stops found within {radiusLabel}.
+              </p>
+              <p className="text-sm text-gray-500">
+                Showing the closest known stop below.
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {stops.slice(0, 9).map((stop) => (
+              <div key={stop.id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg sm:p-6">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
                     <MapPin size={20} className="text-emerald-600" />
@@ -326,22 +357,52 @@ function NearbyBusStops({ stops, loading, error, nearestStop }) {
                     )}
                   </div>
                 </div>
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-50 pt-4">
+                  <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                    <Navigation size={14} className="text-gray-400" />
+                    <span className="font-semibold text-gray-800">{formatDistance(stop.distance)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                    <Clock size={14} className="text-gray-400" />
+                    <span>{formatWalkingTime(stop.distance)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="mt-4 flex items-center gap-4 border-t border-gray-50 pt-4">
-                <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                  <Navigation size={14} className="text-gray-400" />
-                  <span className="font-semibold text-gray-800">{stop.distance}m</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                  <Clock size={14} className="text-gray-400" />
-                  <span>{walkingTime} walk</span>
-                </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {nearestStop && (
+        <div className="mb-8">
+          {sectionHeader("Nearest Bus Stop")}
+          <Card className="border-emerald-100 bg-white shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+                <MapPin size={22} className="text-emerald-600" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-gray-900">{nearestStop.name}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{nearestStop.type}</p>
+                {nearestStop.routes && nearestStop.routes.length > 0 && (
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Routes: {nearestStop.routes.join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-bold text-emerald-600">
+                  {formatDistance(nearestStop.distance)}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {formatWalkingTime(nearestStop.distance)}
+                </p>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </div>
+          </Card>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -528,8 +589,9 @@ function PassengerDashboard() {
   const [reportOpen, setReportOpen] = useState(false);
   const { vehicles, loading: vehiclesLoading } = useLiveVehicles();
   const { latitude, longitude, accuracy, address, city, loading: geoLoading, error: geoError } = usePassengerLocation();
-  const { busStops: nearbyStops, nearestStop, loading: stopsLoading, error: stopsError } = useNearbyBusStops(latitude, longitude);
+  const { busStops: nearbyStops, nearestStop, loading: stopsLoading, error: stopsError, enhancing: stopsEnhancing } = useNearbyBusStops(latitude, longitude);
   const { routes: nearbyRoutes, loading: routesLoading, error: routesError } = useNearbyRoutes(latitude, longitude, nearbyStops);
+  const { alerts: busAlerts, dismiss: dismissBusAlert } = useNearbyBusNotifications(latitude, longitude, vehicles);
 
   const swapLocations = () => {
     setSource(destination);
@@ -601,6 +663,8 @@ function PassengerDashboard() {
         ))}
       </div>
 
+      <NearbyBusAlerts alerts={busAlerts} onDismiss={dismissBusAlert} />
+
       <LocationPreview
         latitude={latitude}
         longitude={longitude}
@@ -628,10 +692,10 @@ function PassengerDashboard() {
           </div>
           <button
             onClick={swapLocations}
-            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-gray-200 bg-white text-gray-400 transition-all duration-200 hover:border-blue-200 hover:text-blue-600 hover:shadow-sm sm:mt-6"
+            className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-xl border-2 border-gray-200 bg-white text-gray-400 transition-all duration-200 hover:border-blue-200 hover:text-blue-600 hover:shadow-sm sm:mt-6 sm:self-auto"
             title="Swap locations"
           >
-            <ArrowLeftRight size={16} />
+            <ArrowLeftRight size={16} className="rotate-90 sm:rotate-0" />
           </button>
           <div className="relative flex-1">
             <label className="mb-1.5 block text-sm font-semibold text-gray-700">Destination</label>
@@ -646,7 +710,7 @@ function PassengerDashboard() {
               />
             </div>
           </div>
-          <button className="mt-1 inline-flex h-12 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-blue-700 hover:to-blue-800 hover:shadow-md sm:mt-6">
+          <button className="mt-1 inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-blue-700 hover:to-blue-800 hover:shadow-md sm:mt-6 sm:w-auto">
             <Search size={18} />
             Search
           </button>
@@ -718,7 +782,7 @@ function PassengerDashboard() {
                           <span>{Math.round(vehicle.occupancy / vehicle.capacity * 100)}%</span>
                         </div>
                       </div>
-                      <button className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-all duration-200 hover:bg-blue-100">
+                      <button className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-blue-50 px-3.5 text-xs font-semibold text-blue-600 transition-all duration-200 hover:bg-blue-100">
                         <Eye size={14} />
                         Track
                       </button>
@@ -763,6 +827,7 @@ function PassengerDashboard() {
         loading={stopsLoading}
         error={stopsError}
         nearestStop={nearestStop}
+        enhancing={stopsEnhancing}
       />
 
       <AvailableBusRoutes
@@ -774,7 +839,7 @@ function PassengerDashboard() {
       <div className="mb-8 grid gap-6 lg:grid-cols-3">
         <div>
           {sectionHeader("Favourite Routes", (
-            <button className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
+            <button className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-3 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
               View All
               <ChevronRight size={16} />
             </button>
@@ -812,7 +877,7 @@ function PassengerDashboard() {
 
         <div>
           {sectionHeader("Recent Trips", (
-            <button className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
+            <button className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-3 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
               View All
               <ChevronRight size={16} />
             </button>
@@ -855,7 +920,7 @@ function PassengerDashboard() {
 
         <div>
           {sectionHeader("Notifications", (
-            <button className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
+            <button className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-3 text-sm font-medium text-blue-600 transition-all duration-200 hover:bg-blue-50">
               View All
               <ChevronRight size={16} />
             </button>
@@ -890,7 +955,7 @@ function PassengerDashboard() {
 
       <div className="mb-8">
         {sectionHeader("Quick Actions")}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <button className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:shadow-md">
               <MapPin size={24} />

@@ -35,7 +35,7 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
         <div className="flex items-center gap-3">
           <button
             onClick={onToggleSidebar}
-            className="inline-flex items-center justify-center rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 lg:hidden"
+            className="inline-flex items-center justify-center rounded-xl p-3 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 lg:hidden"
             aria-label="Toggle sidebar"
           >
             <Menu size={20} />
@@ -57,18 +57,18 @@ function DashboardNavbar({ title, onToggleSidebar, notificationCount = 0, user, 
         <div className="flex items-center gap-1.5">
           <button
             onClick={toggleTheme}
-            className="rounded-xl p-2.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="rounded-xl p-3 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
-            {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
           </button>
 
           <button
             onClick={() => navigate(`/${role}/notifications`)}
-            className="relative rounded-xl p-2.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="relative rounded-xl p-3 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
           >
-            <Bell size={19} />
+            <Bell size={20} />
             {notificationCount > 0 && (
               <span className="absolute right-1.5 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
                 {notificationCount > 99 ? "99+" : notificationCount}

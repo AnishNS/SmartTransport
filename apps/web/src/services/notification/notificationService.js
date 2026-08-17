@@ -14,6 +14,13 @@ export async function listNotifications() {
   return notifications || [];
 }
 
+// Persists a notification scoped to the caller (the backend always targets the
+// authenticated user id). Best-effort: the passenger dashboard uses this to
+// record "bus nearby" alerts into the existing notification center.
+export async function createNotification(payload) {
+  return apiRequest("post", "/api/notifications", payload);
+}
+
 // Marks a single notification read.
 export async function markNotificationRead(id) {
   return apiRequest("patch", `/api/notifications/${id}/read`);
@@ -24,4 +31,4 @@ export async function markAllNotificationsRead() {
   return apiRequest("patch", "/api/notifications/read-all");
 }
 
-export default { listNotifications, markNotificationRead, markAllNotificationsRead };
+export default { listNotifications, createNotification, markNotificationRead, markAllNotificationsRead };

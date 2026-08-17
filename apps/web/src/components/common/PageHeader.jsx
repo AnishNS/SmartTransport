@@ -10,7 +10,7 @@ function PageHeader({ title, subtitle, breadcrumbs = [], action }) {
   return (
     <div className="mb-6 sm:mb-8">
       {breadcrumbs.length > 0 && (
-        <nav className="mb-3 flex items-center gap-1.5 text-xs font-medium text-gray-400">
+        <nav className="mb-3 hidden items-center gap-1.5 text-xs font-medium text-gray-400 sm:flex">
           <Link
             to={homePath}
             className="flex items-center gap-1 transition-colors hover:text-blue-600"

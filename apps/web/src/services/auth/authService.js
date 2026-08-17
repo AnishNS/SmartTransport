@@ -31,6 +31,18 @@ export const roleHomePath = {
   admin: "/admin",
 };
 
+// Builds the URL Supabase should redirect the browser to after email
+// confirmation. It is derived from the CURRENT application origin, so it works
+// for http://localhost:5173 in local development and for an HTTPS/ngrok origin
+// on a phone without hardcoding either hostname. The SPA has no dedicated auth
+// callback route: supabase-js detects the confirmation tokens in the URL
+// fragment on any page, so we point the redirect at the login screen (matching
+// the pre-existing UX).
+export function getAuthRedirectUrl() {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/login`;
+}
+
 const SESSION_STORAGE_KEY = "smarttransport:current-user";
 
 const roleLabels = { passenger: "Passenger", driver: "Driver", admin: "Admin" };
@@ -229,6 +241,10 @@ export async function registerPassenger({
     email: normalizedEmail,
     password,
     options: {
+      // Dynamic redirect: returns the user to the app (login screen) on
+      // whatever origin they registered from (localhost dev or HTTPS/ngrok).
+      // Supabase still validates this against the Dashboard "Redirect URLs".
+      emailRedirectTo: getAuthRedirectUrl(),
       data: {
         name: (name || "").trim(),
         phone: (phone || "").trim(),

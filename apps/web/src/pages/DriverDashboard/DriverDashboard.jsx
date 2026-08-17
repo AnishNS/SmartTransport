@@ -28,6 +28,7 @@ import ReportModal from "../../components/report/ReportModal";
 import useDriverTrip from "../../hooks/useDriverTrip";
 import useLiveVehicles from "../../hooks/useLiveVehicles";
 import useDriverProfile from "../../hooks/useDriverProfile";
+import useDriverLocation from "../../hooks/useDriverLocation";
 import { notificationService } from "../../services/notification";
 import {
   getCurrentDriver,
@@ -50,6 +51,32 @@ const statusStyles = {
   Available: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Unavailable: "bg-gray-50 text-gray-600 border-gray-200",
 };
+
+const gpsStatusConfig = {
+  idle: { label: "Idle", color: "text-gray-500", dot: "bg-gray-400", bg: "bg-gray-50" },
+  requesting: { label: "Connecting", color: "text-amber-600", dot: "bg-amber-500", bg: "bg-amber-50" },
+  connected: { label: "Connected", color: "text-green-600", dot: "bg-green-500", bg: "bg-green-50" },
+  permission_denied: { label: "Permission Denied", color: "text-red-600", dot: "bg-red-500", bg: "bg-red-50" },
+  unavailable: { label: "Unavailable", color: "text-red-600", dot: "bg-red-500", bg: "bg-red-50" },
+  timeout: { label: "Timeout", color: "text-amber-600", dot: "bg-amber-500", bg: "bg-amber-50" },
+  unsupported: { label: "Unsupported", color: "text-red-600", dot: "bg-red-500", bg: "bg-red-50" },
+  error: { label: "Error", color: "text-red-600", dot: "bg-red-500", bg: "bg-red-50" },
+};
+
+const socketStatusConfig = {
+  connecting: { label: "Connecting", color: "text-amber-600", dot: "bg-amber-500", bg: "bg-amber-50" },
+  connected: { label: "Connected", color: "text-green-600", dot: "bg-green-500", bg: "bg-green-50" },
+  disconnected: { label: "Disconnected", color: "text-red-600", dot: "bg-red-500", bg: "bg-red-50" },
+};
+
+function StatusPill({ config }) {
+  return (
+    <span className={`flex items-center gap-1.5 text-sm font-medium ${config.color}`}>
+      <span className={`flex h-2 w-2 rounded-full ${config.dot}`} />
+      {config.label}
+    </span>
+  );
+}
 
 // The vehicles.status column is a lowercase management status ('active',
 // 'maintenance', 'inactive'). Map it to a display label for the badge.
@@ -159,10 +186,14 @@ function DriverDashboard() {
   // not modelled in the database yet); its name is never rendered.
   const { loading: profileLoading, error: profileError, driver, vehicle, user, reload } = useDriverProfile();
   const demoDriver = getCurrentDriver();
-  const route = getAssignedRoute(demoDriver?.id);
+  const mockRoute = getAssignedRoute(demoDriver?.id);
   const shift = getCurrentShift(demoDriver?.id);
   const tripStats = getDriverTripStats(demoDriver?.id);
-  const routeStops = getRouteStops(route?.id);
+  // The REAL route comes from the assigned vehicle (vehicles.route_id joined to
+  // public.routes). stopService bus stops and demo route data are only used as
+  // UI texture — the route NAME is never hardcoded.
+  const route = vehicle?.routes || null;
+  const routeStops = getRouteStops(mockRoute?.id);
   const { vehicles: liveVehicles } = useLiveVehicles();
   const { tripState, startTrip, pauseTrip, resumeTrip, endTrip } = useDriverTrip();
 
@@ -193,11 +224,28 @@ function DriverDashboard() {
   const liveVehicle = vehicle ? liveVehicles.find((v) => v.id === vehicle.id) : null;
   const isTripActive = tripState.status === "in_progress" || tripState.status === "paused";
 
+  // Real-time GPS reporter. Only tracks while a trip is active AND the driver
+  // has an assigned vehicle AND the socket is connected; stops on trip end.
+  const gps = useDriverLocation({
+    enabled: true,
+    driver,
+    vehicle,
+    tripId: tripState.tripId,
+    tripActive: isTripActive,
+  });
+
+  const gpsMeta = gpsStatusConfig[gps.gpsStatus] || gpsStatusConfig.idle;
+  const socketMeta = socketStatusConfig[gps.socketStatus] || socketStatusConfig.disconnected;
+
   const nextStop = liveVehicle?.nextStop || routeStops[1]?.name || routeStops[0]?.name || "—";
   const remainingStops = Math.max(0, routeStops.length - 1);
   const currentSpeed = liveVehicle?.speed || 0;
   const delayStatus = liveVehicle?.status === "Delayed" ? "Delayed" : "On Time";
-  const lastUpdated = liveVehicle ? "just now" : "2 min ago";
+  const lastUpdated = gps.lastUpdate
+    ? new Date(gps.lastUpdate).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : liveVehicle
+      ? "just now"
+      : "—";
 
   const displayVehicleStatus = isTripActive
     ? tripState.status === "paused"
@@ -311,7 +359,7 @@ function DriverDashboard() {
             <DetailRow icon={Bus} label="Vehicle Number" value={vehicle?.vehicle_number || "No vehicle assigned"} />
             <DetailRow icon={Route} label="Vehicle Type" value={vehicle?.vehicle_type || "—"} />
             <DetailRow icon={Users} label="Capacity" value={vehicle?.capacity ? `${vehicle.capacity} seats` : "—"} />
-            <DetailRow icon={Navigation} label="Route" value={`${route?.routeNumber || "—"} · ${route?.routeName || ""} - ${route?.source || ""} \u2192 ${route?.destination || ""}`} />
+            <DetailRow icon={Navigation} label="Route" value={route ? `${route.route_code || "Route"} · ${route.route_name} - ${route.source} \u2192 ${route.destination}` : "No route assigned"} />
             <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
               <span className="text-sm font-medium text-emerald-700">Driver Status</span>
               <StatusBadge status={displayAvailability} />
@@ -326,8 +374,8 @@ function DriverDashboard() {
         <Card>
           <SectionHeader title="Current Trip" />
           <div className="space-y-4">
-            <DetailRow icon={MapPin} label="Source" value={route?.source || "—"} />
-            <DetailRow icon={Navigation} label="Destination" value={route?.destination || "—"} />
+            <DetailRow icon={MapPin} label="Source" value={route?.source || mockRoute?.source || "—"} />
+            <DetailRow icon={Navigation} label="Destination" value={route?.destination || mockRoute?.destination || "—"} />
             <DetailRow icon={MapPin} label="Next Stop" value={nextStop} />
             <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
               <span className="text-sm font-medium text-emerald-700">Trip Status</span>
@@ -353,7 +401,7 @@ function DriverDashboard() {
           )}
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" size="lg" icon={PlayCircle} disabled={isTripActive} onClick={startTrip}>
+          <Button variant="primary" size="lg" icon={PlayCircle} disabled={isTripActive} onClick={() => startTrip(vehicle?.route_id || route?.id)}>
             Start Trip
           </Button>
           <Button variant="outline" size="lg" icon={PauseCircle} disabled={tripState.status !== "in_progress"} onClick={pauseTrip}>
@@ -372,17 +420,23 @@ function DriverDashboard() {
         <Card>
           <SectionHeader title="Live Status" />
           <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-3">
+            <div className={`flex items-center justify-between rounded-xl ${gpsMeta.bg} px-4 py-3`}>
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100">
-                  <Wifi size={15} className="text-green-600" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/60">
+                  <Wifi size={15} className="text-gray-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-700">GPS Status</span>
               </div>
-              <span className="flex items-center gap-1.5 text-sm font-medium text-green-600">
-                <span className="flex h-2 w-2 rounded-full bg-green-500" />
-                Connected
-              </span>
+              <StatusPill config={gpsMeta} />
+            </div>
+            <div className={`flex items-center justify-between rounded-xl ${socketMeta.bg} px-4 py-3`}>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/60">
+                  <Wifi size={15} className="text-gray-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Socket Status</span>
+              </div>
+              <StatusPill config={socketMeta} />
             </div>
             <DetailRow icon={Gauge} label="Current Speed" value={`${currentSpeed} km/h`} />
             <DetailRow icon={Clock} label="Delay Status" value={delayStatus} />

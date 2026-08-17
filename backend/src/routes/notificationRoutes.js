@@ -10,6 +10,7 @@ const notificationController = require("../controllers/notificationController");
 router.use(requireAuth);
 
 router.get("/", notificationController.list);
+router.post("/", notificationController.create);
 router.patch("/:id/read", notificationController.markRead);
 router.patch("/read-all", notificationController.markAllRead);
 

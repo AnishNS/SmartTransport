@@ -56,8 +56,8 @@ function BusMarker({ vehicle }) {
 
   return (
     <Marker position={[vehicle.latitude, vehicle.longitude]} icon={icon}>
-      <Popup>
-        <div style={{ minWidth: "200px", fontFamily: "system-ui, sans-serif" }}>
+      <Popup maxWidth={240}>
+        <div style={{ minWidth: "180px", fontFamily: "system-ui, sans-serif" }}>
           <p style={{ margin: 0, fontWeight: 700, fontSize: "14px", color: "#111" }}>
             🚌 {vehicle.vehicleNumber}
           </p>

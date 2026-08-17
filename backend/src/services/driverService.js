@@ -21,6 +21,7 @@
 
 const supabaseAdmin = require("../config/supabaseAdmin");
 const { createNotification } = require("./notificationService");
+const { routeExists } = require("./routeService");
 
 // The `is_active` column ships with database/driver_deactivation.sql. The
 // backend tolerates it being absent (migration not yet run): it probes for the
@@ -54,7 +55,7 @@ async function driverSelect(includeUserVehicle = true) {
     ? DRIVER_FIELDS_WITH_ACTIVE
     : DRIVER_FIELDS_CORE;
   return includeUserVehicle
-    ? `${core}, users(name, email, phone, role), vehicles(id, vehicle_number, vehicle_type, capacity, status)`
+    ? `${core}, users(name, email, phone, role), vehicles(id, vehicle_number, vehicle_type, capacity, status, route_id, routes(route_code, route_number, route_name, source, destination))`
     : core;
 }
 
@@ -374,16 +375,17 @@ async function reactivateDriver(driverId) {
 }
 
 // Lists fleet vehicles. When `available` is true only active, unassigned
-// vehicles are returned (the pool the Admin can assign to a driver).
+// vehicles WITH an assigned route are returned (the pool the Admin can assign
+// to a driver — a vehicle without a route is never assignable).
 async function listVehicles({ available = false } = {}) {
   const admin = requireAdminClient();
 
   let query = admin
     .from("vehicles")
-    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id, drivers(id, users(name, email))");
+    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id, route_id, routes(route_code, route_number, route_name, source, destination), drivers(id, users(name, email))");
 
   if (available) {
-    query = query.is("driver_id", null).eq("status", "active");
+    query = query.is("driver_id", null).eq("status", "active").not("route_id", "is", null);
   }
 
   query = query.order("vehicle_number", { ascending: true });
@@ -401,8 +403,44 @@ async function listVehicles({ available = false } = {}) {
     capacity: row.capacity,
     status: row.status,
     driver_id: row.driver_id,
+    route_id: row.route_id,
+    route: row.routes
+      ? {
+          id: row.route_id,
+          route_code: row.routes.route_code,
+          route_number: row.routes.route_number,
+          route_name: row.routes.route_name,
+          source: row.routes.source,
+          destination: row.routes.destination,
+        }
+      : null,
     driver_name: row.drivers?.users?.name || null,
   }));
+}
+
+// Maps a vehicle row (with optional routes join) to the fleet shape returned to
+// the Admin UI.
+function buildFleetVehicleRow(row) {
+  return {
+    id: row.id,
+    vehicle_number: row.vehicle_number,
+    vehicle_type: row.vehicle_type,
+    capacity: row.capacity,
+    status: row.status,
+    driver_id: row.driver_id,
+    route_id: row.route_id,
+    route: row.routes
+      ? {
+          id: row.route_id,
+          route_code: row.routes.route_code,
+          route_number: row.routes.route_number,
+          route_name: row.routes.route_name,
+          source: row.routes.source,
+          destination: row.routes.destination,
+        }
+      : null,
+    driver_name: row.drivers?.users?.name || null,
+  };
 }
 
 // Normalizes the vehicle `status` to the values the fleet already uses:
@@ -414,12 +452,15 @@ function normalizeVehicleStatus(status) {
 
 // Creates a vehicle in the fleet. The unique vehicle_number is enforced by the
 // database (vehicles.vehicle_number unique); a duplicate surfaces as a friendly
-// error. New vehicles default to status 'active' unless the caller passes one.
+// error. New vehicles require an actual route (vehicles must reference the
+// existing route network) and default to status 'active' unless the caller
+// passes one.
 async function createVehicle({
   vehicleNumber,
   vehicleType,
   capacity,
   status,
+  routeId,
 }) {
   const admin = requireAdminClient();
 
@@ -434,18 +475,25 @@ async function createVehicle({
   if (parsedCapacity != null && (!Number.isFinite(parsedCapacity) || parsedCapacity < 1)) {
     throw new Error("Capacity must be a positive number.");
   }
+  if (!routeId) {
+    throw new Error("Please select a route for this vehicle.");
+  }
+  if (!(await routeExists(routeId))) {
+    throw new Error("The selected route was not found.");
+  }
 
   const insert = {
     vehicle_number: number,
     vehicle_type: type || null,
     capacity: parsedCapacity,
     status: normalizeVehicleStatus(status),
+    route_id: routeId,
   };
 
   const { data, error } = await admin
     .from("vehicles")
     .insert(insert)
-    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id")
+    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id, route_id, routes(route_code, route_number, route_name, source, destination)")
     .single();
 
   if (error) {
@@ -455,12 +503,12 @@ async function createVehicle({
     throw new Error(`Could not create the vehicle: ${error.message}`);
   }
 
-  return { ...data, driver_name: null };
+  return buildFleetVehicleRow(data);
 }
 
-// Updates editable fleet fields (type, capacity, status). The vehicle number is
-// the natural key for staff identification and is left immovable here.
-async function updateVehicle(vehicleId, { vehicleType, capacity, status }) {
+// Updates editable fleet fields (type, capacity, status, route). The vehicle
+// number is the natural key for staff identification and is left immovable.
+async function updateVehicle(vehicleId, { vehicleType, capacity, status, routeId }) {
   const admin = requireAdminClient();
 
   const parsedCapacity =
@@ -468,6 +516,9 @@ async function updateVehicle(vehicleId, { vehicleType, capacity, status }) {
 
   if (parsedCapacity != null && (!Number.isFinite(parsedCapacity) || parsedCapacity < 1)) {
     throw new Error("Capacity must be a positive number.");
+  }
+  if (routeId !== undefined && routeId && !(await routeExists(routeId))) {
+    throw new Error("The selected route was not found.");
   }
 
   const update = {};
@@ -480,27 +531,22 @@ async function updateVehicle(vehicleId, { vehicleType, capacity, status }) {
   if (status !== undefined) {
     update.status = normalizeVehicleStatus(status);
   }
+  if (routeId !== undefined) {
+    update.route_id = routeId || null;
+  }
 
   const { data, error } = await admin
     .from("vehicles")
     .update(update)
     .eq("id", vehicleId)
-    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id, drivers(id, users(name))")
+    .select("id, vehicle_number, vehicle_type, capacity, status, driver_id, route_id, routes(route_code, route_number, route_name, source, destination), drivers(id, users(name))")
     .single();
 
   if (error) {
     throw new Error(`Could not update the vehicle: ${error.message}`);
   }
 
-  return {
-    id: data.id,
-    vehicle_number: data.vehicle_number,
-    vehicle_type: data.vehicle_type,
-    capacity: data.capacity,
-    status: data.status,
-    driver_id: data.driver_id,
-    driver_name: data.drivers?.users?.name || null,
-  };
+  return buildFleetVehicleRow(data);
 }
 
 // Soft-deactivates a vehicle: status becomes 'inactive' and any current driver
@@ -625,7 +671,7 @@ async function assignVehicle(driverId, vehicleId) {
 
   const { data: vehicle, error: vehicleError } = await admin
     .from("vehicles")
-    .select("id, vehicle_number, status, driver_id")
+    .select("id, vehicle_number, status, driver_id, route_id, routes(route_code, route_number, route_name)")
     .eq("id", vehicleId)
     .maybeSingle();
 
@@ -633,8 +679,16 @@ async function assignVehicle(driverId, vehicleId) {
     throw new Error("Vehicle not found.");
   }
 
-  if (vehicle.status === "inactive") {
-    throw new Error("This vehicle is inactive and cannot be assigned.");
+  if (["maintenance", "inactive"].includes(vehicle.status)) {
+    throw new Error(
+      `Vehicle ${vehicle.vehicle_number} is ${vehicle.status} and cannot be assigned.`
+    );
+  }
+
+  if (!vehicle.route_id) {
+    throw new Error(
+      `Vehicle ${vehicle.vehicle_number} has no route assigned. Assign a route first.`
+    );
   }
 
   if (vehicle.driver_id && vehicle.driver_id !== driverId) {
@@ -689,6 +743,14 @@ async function assignVehicle(driverId, vehicleId) {
     vehicle_type: assigned.vehicle_type,
     capacity: assigned.capacity,
     status: assigned.status,
+    route_id: vehicle.route_id,
+    route: vehicle.routes
+      ? {
+          route_code: vehicle.routes.route_code,
+          route_number: vehicle.routes.route_number,
+          route_name: vehicle.routes.route_name,
+        }
+      : null,
   };
 }
 

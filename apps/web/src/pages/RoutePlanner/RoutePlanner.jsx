@@ -24,9 +24,17 @@ import EmptyState from "../../components/ui/EmptyState";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import ReportModal from "../../components/report/ReportModal";
 import usePassengerLocation from "../../hooks/usePassengerLocation";
+import useNearbyBusStops from "../../hooks/useNearbyBusStops";
 import { recommendBestRoute, findNearestStop, findDestinationStops } from "../../services/transport/routeRecommendationService";
 import { calculateDistance } from "../../utils/location/distance";
-import { getAllBusStops } from "../../services/transport/stopService";
+
+const formatDistance = (meters) => {
+  if (meters == null) return "—";
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${Math.round(meters)} m`;
+};
+
+const formatRadius = (meters) => (meters >= 1000 ? `${meters / 1000} km` : `${meters} m`);
 
 const quickActions = [
   { label: "Track Live Vehicles", icon: Bus, gradient: "from-blue-500 to-blue-600", hoverBorder: "hover:border-blue-200" },
@@ -66,6 +74,7 @@ function RoutePlanner() {
   const [destination, setDestination] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
   const { latitude, longitude, loading: locationLoading } = usePassengerLocation();
+  const { busStops: nearbyStops, nearestStop, loading: nearbyLoading } = useNearbyBusStops(latitude, longitude);
   const userLocation = useMemo(
     () => (latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null),
     [latitude, longitude]
@@ -223,10 +232,10 @@ function RoutePlanner() {
                 </div>
                 <button
                   onClick={swapLocations}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-gray-200 bg-white text-gray-400 transition-all duration-200 hover:border-blue-200 hover:text-blue-600 hover:shadow-sm"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-xl border-2 border-gray-200 bg-white text-gray-400 transition-all duration-200 hover:border-blue-200 hover:text-blue-600 hover:shadow-sm sm:self-auto"
                   title="Swap locations"
                 >
-                  <ArrowLeftRight size={16} />
+                  <ArrowLeftRight size={16} className="rotate-90 sm:rotate-0" />
                 </button>
                 <div className="flex-1 relative">
                   <label className="mb-1.5 block text-sm font-semibold text-gray-700">Destination</label>
@@ -266,7 +275,7 @@ function RoutePlanner() {
                   variant="primary"
                   size="lg"
                   icon={Search}
-                  className="shrink-0 sm:mb-0.5"
+                  className="w-full shrink-0 justify-center sm:mb-0.5 sm:w-auto"
                   onClick={handleSearch}
                   loading={searching}
                 >
@@ -400,16 +409,24 @@ function RoutePlanner() {
                   </button>
                 )}
               />
-              {locationLoading ? (
+              {locationLoading || nearbyLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <LoadingSpinner size="md" />
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {getAllBusStops().slice(0, 6).map((stop) => {
-                    const dist = userLocation
-                      ? Math.round(calculateDistance(userLocation.lat, userLocation.lng, stop.latitude, stop.longitude))
-                      : null;
+                  {nearbyStops.length === 0 && (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-700">
+                      No bus stops found within {formatRadius(1500)}.
+                    </p>
+                  )}
+
+                  {(nearbyStops.length > 0 ? nearbyStops.slice(0, 6) : nearestStop ? [nearestStop] : []).map((stop) => {
+                    const dist = stop.distance != null
+                      ? stop.distance
+                      : userLocation
+                        ? Math.round(calculateDistance(userLocation.lat, userLocation.lng, stop.latitude, stop.longitude))
+                        : null;
                     return (
                       <div
                         key={stop.id}
@@ -428,12 +445,12 @@ function RoutePlanner() {
                               {dist !== null && (
                                 <span className="inline-flex items-center gap-1">
                                   <MapPin size={11} className="text-gray-400" />
-                                  {dist < 1000 ? `${dist} m` : `${(dist / 1000).toFixed(1)} km`}
+                                  {formatDistance(dist)}
                                 </span>
                               )}
                             </div>
                             <div className="mt-2 flex flex-wrap gap-1.5">
-                              {stop.routes.length > 0 ? (
+                              {stop.routes && stop.routes.length > 0 ? (
                                 stop.routes.map((r) => (
                                   <span
                                     key={r}
@@ -454,6 +471,21 @@ function RoutePlanner() {
                       </div>
                     );
                   })}
+
+                  {nearestStop && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                          <MapPin size={15} className="text-emerald-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Nearest Bus Stop</p>
+                          <p className="truncate text-sm font-bold text-gray-900">{nearestStop.name}</p>
+                        </div>
+                      </div>
+                      <p className="shrink-0 text-sm font-bold text-emerald-600">{formatDistance(nearestStop.distance)}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

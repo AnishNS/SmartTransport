@@ -118,7 +118,7 @@ function TransportNetworkLayer({ latitude, longitude, vehicles }) {
 
       {latitude != null && longitude != null && (
         <Marker position={[latitude, longitude]} icon={passengerIcon}>
-          <Popup>
+          <Popup maxWidth={220}>
             <div style={{ minWidth: "150px", fontFamily: "system-ui, sans-serif" }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: "13px", color: "#111" }}>
                 Your Location
@@ -137,8 +137,8 @@ function TransportNetworkLayer({ latitude, longitude, vehicles }) {
           position={[stop.latitude, stop.longitude]}
           icon={createStopIcon(stop.type)}
         >
-          <Popup>
-            <div style={{ minWidth: "160px", fontFamily: "system-ui, sans-serif" }}>
+          <Popup maxWidth={240}>
+            <div style={{ minWidth: "150px", fontFamily: "system-ui, sans-serif" }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: "13px", color: "#111" }}>
                 {stop.name}
               </p>

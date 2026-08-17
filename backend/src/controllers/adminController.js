@@ -142,6 +142,7 @@ async function createVehicleHandler(req, res) {
       vehicleType: req.body.vehicleType,
       capacity: req.body.capacity,
       status: req.body.status,
+      routeId: req.body.routeId,
     });
     res.status(201).json({
       success: true,
@@ -163,6 +164,7 @@ async function updateVehicleHandler(req, res) {
       vehicleType: req.body.vehicleType,
       capacity: req.body.capacity,
       status: req.body.status,
+      routeId: req.body.routeId,
     });
     res.status(200).json({
       success: true,
